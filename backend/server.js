@@ -11,17 +11,11 @@ const port = process.env.PORT || 3000;
 // KONFIGURASI FONNTE
 // ==========================================
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
-let TARGET_PHONE_NUMBER = process.env.TARGET_PHONE_NUMBER;
+// Default target dari env (jika frontend tidak mengirim)
+const DEFAULT_TARGET_PHONE = process.env.TARGET_PHONE_NUMBER;
 
-if (!FONNTE_TOKEN || !TARGET_PHONE_NUMBER) {
-  console.error("ERROR: Harap lengkapi file .env dengan FONNTE_TOKEN dan TARGET_PHONE_NUMBER");
-}
-
-if (TARGET_PHONE_NUMBER) {
-    TARGET_PHONE_NUMBER = TARGET_PHONE_NUMBER.replace('whatsapp:', '');
-    if (TARGET_PHONE_NUMBER.startsWith('08')) {
-        TARGET_PHONE_NUMBER = '62' + TARGET_PHONE_NUMBER.slice(1);
-    }
+if (!FONNTE_TOKEN) {
+  console.error("ERROR: Harap lengkapi file .env dengan FONNTE_TOKEN");
 }
 
 app.use(cors());
@@ -31,7 +25,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // ==========================================
 // IN-MEMORY DATABASE (Message Queue)
 // ==========================================
-// Menggunakan Array agar pesan tidak tertimpa jika masuk bersamaan
 global.incomingMessageQueue = [];
 
 const messageStore = {};
@@ -46,21 +39,39 @@ const saveMessage = (customerId, role, content) => {
   });
 };
 
+// Helper Format Nomor HP
+const formatPhoneNumber = (number) => {
+    if (!number) return null;
+    let formatted = number.toString().replace(/\D/g, ''); // Hapus non-digit
+    if (formatted.startsWith('08')) {
+        formatted = '62' + formatted.slice(1);
+    }
+    return formatted;
+};
+
 app.get('/', (req, res) => {
-  res.send('RICH Backend (Queue Version) is running! 🚀');
+  res.send('RICH Backend (Dynamic Target) is running! 🚀');
 });
 
 // ==========================================
 // 1. API: KIRIM PESAN (OUTGOING)
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
-    const { customerId, message } = req.body;
+    // Terima target dari Frontend, fallback ke ENV jika kosong
+    let { customerId, message, target } = req.body;
+    
+    // Logika prioritas target: Request Body > Environment Variable
+    let finalTarget = target ? formatPhoneNumber(target) : formatPhoneNumber(DEFAULT_TARGET_PHONE);
 
-    console.log(`[OUTGOING] To: ${TARGET_PHONE_NUMBER} | Msg: ${message}`);
+    if (!finalTarget) {
+        return res.status(400).json({ success: false, error: "Target phone number is missing (check Frontend input or .env)" });
+    }
+
+    console.log(`[OUTGOING] To: ${finalTarget} | Msg: ${message}`);
     
     try {
         const response = await axios.post('https://api.fonnte.com/send', {
-            target: TARGET_PHONE_NUMBER,
+            target: finalTarget,
             message: message,
             countryCode: '62'
         }, {
@@ -69,7 +80,7 @@ app.post('/api/send-message', async (req, res) => {
 
         console.log(`[FONNTE SUCCESS] Status: ${response.data.status}`);
         saveMessage(customerId, 'assistant', message);
-        res.json({ success: true, detail: response.data });
+        res.json({ success: true, detail: response.data, target_used: finalTarget });
 
     } catch (error) {
         console.error(`[FONNTE FAILED]`, error.response ? error.response.data : error.message);
@@ -81,10 +92,9 @@ app.post('/api/send-message', async (req, res) => {
 // 2. API: POLLING PESAN (INCOMING QUEUE)
 // ==========================================
 app.get('/api/poll-incoming', (req, res) => {
-    // Kirim semua pesan yang ada di antrian, lalu kosongkan antrian
     if (global.incomingMessageQueue.length > 0) {
         const messagesToSend = [...global.incomingMessageQueue];
-        global.incomingMessageQueue = []; // Reset queue
+        global.incomingMessageQueue = []; 
         res.json({ hasNew: true, messages: messagesToSend });
     } else {
         res.json({ hasNew: false, messages: [] });
@@ -102,13 +112,9 @@ app.post('/whatsapp', async (req, res) => {
   const incomingMsg = req.body.message; 
   const senderNumber = req.body.sender;
 
-  // Filter sender jika perlu
-  // if (senderNumber !== TARGET_PHONE_NUMBER) return res.end();
-
   console.log(`[INCOMING] Dari ${senderNumber}: ${incomingMsg}`);
 
   if (incomingMsg) {
-      // Masukkan ke Antrian
       global.incomingMessageQueue.push({
           content: incomingMsg,
           sender: senderNumber,
@@ -120,6 +126,5 @@ app.post('/whatsapp', async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Backend (Queue System) berjalan di port ${port}`);
-  console.log(`📱 Target: ${TARGET_PHONE_NUMBER}`);
+  console.log(`🚀 Backend (Dynamic Target) berjalan di port ${port}`);
 });

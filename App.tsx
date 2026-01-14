@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off } from 'lucide-react';
+import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -12,23 +12,35 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
+  // State untuk Nomor HP Target (Disimpan di LocalStorage agar persisten)
+  const [targetPhone, setTargetPhone] = useState(() => {
+    return localStorage.getItem('target_phone') || '08123456789';
+  });
+
+  // Simpan ke LocalStorage setiap kali berubah
+  useEffect(() => {
+    localStorage.setItem('target_phone', targetPhone);
+  }, [targetPhone]);
+
   // Mode sinkronisasi dengan WhatsApp asli
   const [isLiveSync, setIsLiveSync] = useState(false);
 
   // Ref untuk menghindari stale closure di dalam setInterval
   const dataRef = useRef(data);
   const messagesRef = useRef(messages);
+  const targetPhoneRef = useRef(targetPhone);
   
   useEffect(() => {
     dataRef.current = data;
     messagesRef.current = messages;
-  }, [data, messages]);
+    targetPhoneRef.current = targetPhone;
+  }, [data, messages, targetPhone]);
 
   // Initialize Chat Session 
   useEffect(() => {
     initializeGeminiChat(data);
     setMessages(data.messages);
-  }, [data.id]); // Re-init only when Customer ID changes, not on every message
+  }, [data.id]);
 
   // =========================================================
   // LOGIC SINKRONISASI WA (POLLING)
@@ -41,31 +53,29 @@ const App: React.FC = () => {
         const response = await fetch(`${API_BASE_URL}/api/poll-incoming`);
         const json = await response.json();
 
-        // Cek jika ada pesan (backend baru mengembalikan array 'messages')
         if (json.hasNew && json.messages && json.messages.length > 0) {
             console.log(`📥 Received ${json.messages.length} new messages from WA`);
             
-            // Loop semua pesan yang masuk (Queue)
             for (const msg of json.messages) {
                 const userText = msg.content;
                 const userMsg: Message = { role: 'user', content: userText };
 
-                // 1. Update UI dengan Pesan User dulu
+                // 1. Update UI dengan Pesan User
                 setMessages(prev => [...prev, userMsg]);
                 setData(prev => ({
                     ...prev,
                     messages: [...prev.messages, userMsg]
                 }));
                 
-                // Update refs segera agar loop berikutnya tahu state terbaru
                 messagesRef.current = [...messagesRef.current, userMsg];
 
                 // 2. TRIGGER AI SEGERA
                 setIsLoading(true);
                 
                 try {
-                    // Gunakan dataRef untuk memastikan konteks ID customer benar
                     const currentId = dataRef.current.id;
+                    const currentTarget = targetPhoneRef.current; // Gunakan nomor dari input UI
+                    
                     const responseText = await sendMessageToGemini(userText, currentId);
                     
                     const aiMsg: Message = { role: 'assistant', content: responseText };
@@ -77,13 +87,14 @@ const App: React.FC = () => {
                         messages: [...prev.messages, aiMsg]
                     }));
 
-                    // 4. KIRIM KE WA ASLI
+                    // 4. KIRIM KE WA ASLI (DENGAN TARGET DARI UI)
                     await fetch(`${API_BASE_URL}/api/send-message`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
                             customerId: currentId,
-                            message: responseText
+                            message: responseText,
+                            target: currentTarget // Kirim nomor HP target ke backend
                         })
                     });
 
@@ -101,17 +112,16 @@ const App: React.FC = () => {
 
     if (isLiveSync) {
       console.log(`Starting Live Sync polling to ${API_BASE_URL}...`);
-      intervalId = setInterval(processIncomingMessages, 3000); // Poll tiap 3 detik
+      intervalId = setInterval(processIncomingMessages, 3000); 
     }
 
     return () => clearInterval(intervalId);
-  }, [isLiveSync]); // Hanya re-run jika toggle LiveSync berubah
+  }, [isLiveSync]); 
 
   // =========================================================
-  // HANDLE KIRIM PESAN MANUAL (Hanya Aktif saat Live Sync OFF)
+  // HANDLE KIRIM PESAN MANUAL (Live Sync OFF)
   // =========================================================
   const handleSendMessage = async (text: string) => {
-    // Mode Simulasi Lokal
     const userMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
     setData(prev => ({ ...prev, messages: [...prev.messages, userMsg] }));
@@ -141,8 +151,20 @@ const App: React.FC = () => {
     <div className="flex h-screen w-full bg-slate-100 font-sans overflow-hidden relative">
       
       {/* Top Control Bar */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
+      <div className="absolute top-4 right-4 z-50 flex gap-2 items-center flex-wrap justify-end pl-4 pointer-events-auto">
         
+        {/* Target Phone Input */}
+        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200" title="Nomor HP Tujuan (untuk Testing)">
+           <Phone size={14} className="text-slate-400" />
+           <input 
+              type="text" 
+              value={targetPhone}
+              onChange={(e) => setTargetPhone(e.target.value)}
+              className="w-28 text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+              placeholder="0812..."
+           />
+        </div>
+
         {/* Live Sync Toggle */}
         <button 
             onClick={() => setIsLiveSync(!isLiveSync)}
@@ -150,7 +172,6 @@ const App: React.FC = () => {
             ${isLiveSync 
                 ? 'bg-red-600 text-white border-red-700 animate-pulse ring-2 ring-red-200' 
                 : 'bg-white text-slate-500 hover:bg-slate-50'}`}
-            title={isLiveSync ? "Mode Otomatis: AI membalas pesan WA masuk" : "Mode Manual: Simulasi Lokal"}
         >
             {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
             {isLiveSync ? 'LIVE SYNC: ON' : 'LIVE SYNC: OFF'}
@@ -204,19 +225,19 @@ const App: React.FC = () => {
         // === DASHBOARD VIEW ===
         <>
           <div className="w-1/3 min-w-[320px] max-w-[400px] h-full border-r border-slate-200 hidden md:block z-10">
-            <CustomerPanel data={data} />
+            <CustomerPanel data={data} targetPhone={targetPhone} />
           </div>
           <div className="flex-1 h-full z-10">
             <ChatInterface 
               messages={messages} 
               onSendMessage={handleSendMessage} 
               isLoading={isLoading}
-              isReadOnly={isLiveSync} // Matikan input saat Live Sync
+              isReadOnly={isLiveSync} 
             />
             {isLiveSync && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/90 text-white text-[10px] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 pointer-events-none backdrop-blur-sm">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    Connected to WhatsApp (Fonnte) | Waiting for incoming messages...
+                    Connected to {targetPhone} | Waiting for messages...
                 </div>
             )}
           </div>

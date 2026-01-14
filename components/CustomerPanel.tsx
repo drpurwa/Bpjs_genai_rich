@@ -6,9 +6,10 @@ import { User, CreditCard, History, Activity, AlertTriangle, Smartphone, BrainCi
 
 interface CustomerPanelProps {
   data: CustomerData;
+  targetPhone: string; // Tambahkan prop targetPhone
 }
 
-export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
+export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data, targetPhone }) => {
   const [sendingStatus, setSendingStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -22,7 +23,6 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
     setErrorMessage('');
     
     try {
-      // Menggunakan URL dinamis dari constants.ts
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
       
       const response = await fetch(BACKEND_URL, {
@@ -32,7 +32,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
         },
         body: JSON.stringify({
           customerId: data.id,
-          // Mengambil pesan rekomendasi dari strategy atau default
+          // Mengirim nomor HP target dinamis dari input UI
+          target: targetPhone, 
           message: `Halo Bapak/Ibu, kami dari BPJS Kesehatan. Mengingatkan total tunggakan Anda sebesar ${formatCurrency(data.billing_info.total_tunggakan)}. Mohon segera diselesaikan.`
         }),
       });
@@ -85,13 +86,13 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
           {sendingStatus === 'idle' && (
             <>
               <Send size={16} />
-              Kirim WA Reminder (Real)
+              Kirim WA ke {targetPhone}
             </>
           )}
           {sendingStatus === 'sending' && (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Mengirim ke WA...
+              Mengirim...
             </>
           )}
           {sendingStatus === 'success' && (
@@ -118,7 +119,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
         
         {sendingStatus !== 'error' && (
           <p className="text-[10px] text-center text-slate-400 mt-1">
-             *Menggunakan Fonnte Gateway. Pastikan device WA sudah scan QR.
+             Target: {targetPhone} (Set di Toolbar Atas)
           </p>
         )}
       </div>

@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity, Wifi, WifiOff, PlayCircle } from 'lucide-react';
+import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity, Wifi, WifiOff, PlayCircle, Copy, ArrowUpRight, ArrowDownLeft, Radio } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
   const [targetPhone, setTargetPhone] = useState(() => {
-    return localStorage.getItem('target_phone') || '08123456789';
+    return localStorage.getItem('target_phone') || '08123810892';
   });
 
   // State Debugging
@@ -231,8 +231,28 @@ const App: React.FC = () => {
             
             {/* DEBUG INFO: Tampil hanya jika Live Sync ON */}
             {isLiveSync && (
-                <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded opacity-95 backdrop-blur-sm border border-slate-600 flex flex-col items-start w-72 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 shadow-xl">
+                <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded opacity-95 backdrop-blur-sm border border-slate-600 flex flex-col items-start w-80 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 shadow-xl">
                     
+                    {/* WEBHOOK CONFIG HELPER */}
+                    <div className="w-full bg-blue-900/50 p-2 rounded mb-2 border border-blue-700">
+                        <span className="text-blue-300 font-bold block mb-1">⚠️ WAJIB Setting di Fonnte:</span>
+                        <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded">
+                            <code className="text-[9px] text-slate-300 break-all flex-1">
+                                {API_BASE_URL}/whatsapp
+                            </code>
+                            <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`${API_BASE_URL}/whatsapp`);
+                                    alert("URL Copied! Paste di Menu Webhook Fonnte.");
+                                }}
+                                className="text-blue-400 hover:text-white"
+                                title="Copy URL"
+                            >
+                                <Copy size={12} />
+                            </button>
+                        </div>
+                    </div>
+
                     {/* CONNECTION HEALTH CHECK */}
                     <div className="flex items-center gap-2 mb-2 border-b border-slate-600 w-full pb-1">
                         {backendConnection === 'connected' ? <Wifi size={12} className="text-green-400"/> : <WifiOff size={12} className="text-red-400"/>}
@@ -242,52 +262,83 @@ const App: React.FC = () => {
                         </span>
                     </div>
 
-                    <div className="flex items-center justify-between w-full mb-1 pb-1">
-                        <div className="flex items-center gap-1">
-                            <Activity size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-slate-400"} />
-                            <span className="font-semibold">Incoming Webhook</span>
+                    {/* JALUR KIRIM STATUS */}
+                    <div className="flex items-center justify-between w-full mb-1 p-1 bg-slate-700/50 rounded border-l-2 border-green-500">
+                        <div className="flex items-center gap-1.5">
+                            <ArrowUpRight size={10} className="text-green-400" />
+                            <div className="flex flex-col">
+                                <span className="font-bold text-slate-200">Jalur Kirim (Outgoing)</span>
+                                <span className="text-[8px] text-slate-400">Metode: API (Aktif)</span>
+                            </div>
                         </div>
-                        
-                        {/* SIMULATION BUTTON */}
-                        <button 
-                            onClick={handleSimulateWebhook}
-                            disabled={simulating || backendConnection !== 'connected'}
-                            className="text-[9px] bg-slate-700 hover:bg-slate-600 border border-slate-500 px-2 py-0.5 rounded flex items-center gap-1 disabled:opacity-50"
-                        >
-                            <PlayCircle size={10} /> Test Webhook
-                        </button>
+                        <span className="text-green-300 font-bold text-[9px]">ACTIVE ✅</span>
                     </div>
 
-                    {backendConnection === 'error' ? (
-                         <div className="text-red-300 bg-red-900/30 p-1 rounded mb-1 text-[9px] w-full">
-                            <strong>FATAL:</strong> Frontend tidak bisa menghubungi Backend. <br/>
-                            1. Cek Railway App apa server mati (Crashed)? <br/>
-                            2. Cek apakah URL di constants.ts benar?
+                    {/* JALUR TERIMA STATUS */}
+                    <div className={`flex flex-col w-full mb-1 p-1 bg-slate-700/50 rounded border-l-2 ${webhookStatus.lastTime ? 'border-green-500' : 'border-red-500'}`}>
+                        <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center gap-1.5">
+                                <ArrowDownLeft size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-red-400"} />
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-200">Jalur Terima (Incoming)</span>
+                                    <span className="text-[8px] text-slate-400">Metode: Webhook (Pasif/Menunggu)</span>
+                                </div>
+                            </div>
+                            <span className={`font-bold text-[9px] ${webhookStatus.lastTime ? 'text-green-300' : 'text-red-300'}`}>
+                                {webhookStatus.lastTime ? 'ACTIVE ✅' : 'WAITING ⏳'}
+                            </span>
+                        </div>
+
+                        {webhookStatus.lastTime && (
+                           <div className="mt-1 pt-1 border-t border-slate-600">
+                              <span className="text-green-300 block">Recv: {webhookStatus.lastTime}</span>
+                              <span className="text-slate-300 block">From: {webhookStatus.lastSender}</span>
+                           </div>
+                        )}
+                    </div>
+                    
+                    {/* VISUALISASI ALUR */}
+                    <div className="w-full bg-black/20 p-2 rounded mt-1 border border-slate-700">
+                        <span className="text-[9px] text-slate-400 block mb-1 font-semibold text-center">ALUR DATA (MENGAPA PERLU WEBHOOK)</span>
+                        <div className="flex items-center justify-between text-[10px] text-slate-300 font-mono">
+                           <div className="flex flex-col items-center">
+                              <span className="bg-green-800 px-1 rounded">WA</span>
+                              <span className="text-[8px] mt-0.5">User</span>
+                           </div>
+                           <span className="text-slate-500">➜</span>
+                           <div className="flex flex-col items-center">
+                              <span className="bg-blue-800 px-1 rounded">Fonnte</span>
+                              <span className="text-[8px] mt-0.5">Server</span>
+                           </div>
+                           <div className="flex flex-col items-center gap-0">
+                               <span className="text-[8px] text-yellow-400 animate-pulse">Push</span>
+                               <span className="text-[8px] text-slate-500">➜</span>
+                           </div>
+                           <div className="flex flex-col items-center">
+                              <span className="bg-purple-800 px-1 rounded">Railway</span>
+                              <span className="text-[8px] mt-0.5">Backend</span>
+                           </div>
+                        </div>
+                    </div>
+
+                    {/* SIMULATION BUTTON */}
+                    {!webhookStatus.lastTime && (
+                         <div className="w-full flex justify-end mt-2">
+                            <button 
+                                onClick={handleSimulateWebhook}
+                                disabled={simulating || backendConnection !== 'connected'}
+                                className="text-[9px] bg-slate-600 hover:bg-slate-500 border border-slate-500 px-2 py-1.5 rounded flex items-center gap-1 disabled:opacity-50 text-white w-full justify-center"
+                            >
+                                <PlayCircle size={10} /> 
+                                {simulating ? 'Mengirim Simulasi...' : 'Test Simulasi Webhook (Paksa Masuk)'}
+                            </button>
+                        </div>
+                    )}
+
+                    {backendConnection === 'error' && (
+                         <div className="text-red-300 bg-red-900/30 p-1 rounded mt-2 text-[9px] w-full border border-red-800">
+                            <strong>FATAL:</strong> Frontend Putus Koneksi ke Backend.
                          </div>
-                    ) : (
-                        webhookStatus.lastTime ? (
-                            <>
-                                <span className="text-green-300 block">Recv: {webhookStatus.lastTime}</span>
-                                <span className="text-slate-300 block mb-1">From: {webhookStatus.lastSender}</span>
-                                {webhookStatus.rawBody && (
-                                    <details className="w-full">
-                                        <summary className="cursor-pointer text-blue-300 hover:text-blue-200">Show Raw JSON</summary>
-                                        <pre className="text-[9px] text-slate-400 bg-slate-900 p-1 rounded mt-1 overflow-x-auto max-h-32">
-                                            {JSON.stringify(webhookStatus.rawBody, null, 2)}
-                                        </pre>
-                                    </details>
-                                )}
-                            </>
-                        ) : (
-                            <div className="text-yellow-200/80 italic text-center w-full py-2 border border-slate-600 rounded bg-slate-700/50">
-                            Waiting for Webhook... <br/>
-                            <div className="text-[9px] text-slate-400 not-italic mt-2 text-left space-y-1">
-                                <p>1. Coba klik tombol <strong>"Test Webhook"</strong> di atas. Jika berhasil, berarti Backend OK.</p>
-                                <p>2. Kirim pesan WA dari HP Pribadi ke Nomor Bot. Balasan Bot tidak memicu webhook.</p>
-                                <p>3. Pastikan URL Fonnte: <code>[URL_RAILWAY]/whatsapp</code></p>
-                            </div>
-                            </div>
-                        )
                     )}
                 </div>
             )}

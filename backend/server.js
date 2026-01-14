@@ -11,7 +11,6 @@ const port = process.env.PORT || 3000;
 // KONFIGURASI FONNTE
 // ==========================================
 const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
-// Default target dari env (jika frontend tidak mengirim)
 const DEFAULT_TARGET_PHONE = process.env.TARGET_PHONE_NUMBER;
 
 if (!FONNTE_TOKEN) {
@@ -23,9 +22,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // ==========================================
-// IN-MEMORY DATABASE (Message Queue)
+// IN-MEMORY DATABASE & DEBUG DATA
 // ==========================================
 global.incomingMessageQueue = [];
+global.lastWebhookData = {
+    receivedAt: null,
+    sender: null,
+    message: null,
+    rawBody: null
+};
 
 const messageStore = {};
 const saveMessage = (customerId, role, content) => {
@@ -39,10 +44,9 @@ const saveMessage = (customerId, role, content) => {
   });
 };
 
-// Helper Format Nomor HP
 const formatPhoneNumber = (number) => {
     if (!number) return null;
-    let formatted = number.toString().replace(/\D/g, ''); // Hapus non-digit
+    let formatted = number.toString().replace(/\D/g, ''); 
     if (formatted.startsWith('08')) {
         formatted = '62' + formatted.slice(1);
     }
@@ -50,21 +54,26 @@ const formatPhoneNumber = (number) => {
 };
 
 app.get('/', (req, res) => {
-  res.send('RICH Backend (Dynamic Target) is running! 🚀');
+  res.send('RICH Backend is running! 🚀');
+});
+
+// ==========================================
+// API DEBUG: CEK KONEKSI WEBHOOK
+// ==========================================
+app.get('/api/debug', (req, res) => {
+    // Endpoint ini dipanggil Frontend untuk cek apakah server pernah terima data Fonnte
+    res.json(global.lastWebhookData);
 });
 
 // ==========================================
 // 1. API: KIRIM PESAN (OUTGOING)
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
-    // Terima target dari Frontend, fallback ke ENV jika kosong
     let { customerId, message, target } = req.body;
-    
-    // Logika prioritas target: Request Body > Environment Variable
     let finalTarget = target ? formatPhoneNumber(target) : formatPhoneNumber(DEFAULT_TARGET_PHONE);
 
     if (!finalTarget) {
-        return res.status(400).json({ success: false, error: "Target phone number is missing (check Frontend input or .env)" });
+        return res.status(400).json({ success: false, error: "Target phone missing" });
     }
 
     console.log(`[OUTGOING] To: ${finalTarget} | Msg: ${message}`);
@@ -78,12 +87,11 @@ app.post('/api/send-message', async (req, res) => {
             headers: { 'Authorization': FONNTE_TOKEN }
         });
 
-        console.log(`[FONNTE SUCCESS] Status: ${response.data.status}`);
         saveMessage(customerId, 'assistant', message);
         res.json({ success: true, detail: response.data, target_used: finalTarget });
 
     } catch (error) {
-        console.error(`[FONNTE FAILED]`, error.response ? error.response.data : error.message);
+        console.error(`[FONNTE FAILED]`, error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -112,7 +120,14 @@ app.post('/whatsapp', async (req, res) => {
   const incomingMsg = req.body.message; 
   const senderNumber = req.body.sender;
 
-  console.log(`[INCOMING] Dari ${senderNumber}: ${incomingMsg}`);
+  // Update Debug Data
+  console.log(`[INCOMING WEBHOOK] Dari: ${senderNumber} | Pesan: ${incomingMsg}`);
+  global.lastWebhookData = {
+      receivedAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
+      sender: senderNumber,
+      message: incomingMsg,
+      rawBody: req.body // Simpan raw body untuk diagnosa
+  };
 
   if (incomingMsg) {
       global.incomingMessageQueue.push({
@@ -126,5 +141,5 @@ app.post('/whatsapp', async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Backend (Dynamic Target) berjalan di port ${port}`);
+  console.log(`🚀 Backend berjalan di port ${port}`);
 });

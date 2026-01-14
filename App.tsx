@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone } from 'lucide-react';
+import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -12,20 +12,19 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
-  // State untuk Nomor HP Target (Disimpan di LocalStorage agar persisten)
   const [targetPhone, setTargetPhone] = useState(() => {
     return localStorage.getItem('target_phone') || '08123456789';
   });
 
-  // Simpan ke LocalStorage setiap kali berubah
+  // State untuk Debug Status Webhook
+  const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null}>({ lastTime: null, lastSender: null });
+
   useEffect(() => {
     localStorage.setItem('target_phone', targetPhone);
   }, [targetPhone]);
 
-  // Mode sinkronisasi dengan WhatsApp asli
   const [isLiveSync, setIsLiveSync] = useState(false);
 
-  // Ref untuk menghindari stale closure di dalam setInterval
   const dataRef = useRef(data);
   const messagesRef = useRef(messages);
   const targetPhoneRef = useRef(targetPhone);
@@ -36,7 +35,6 @@ const App: React.FC = () => {
     targetPhoneRef.current = targetPhone;
   }, [data, messages, targetPhone]);
 
-  // Initialize Chat Session 
   useEffect(() => {
     initializeGeminiChat(data);
     setMessages(data.messages);
@@ -47,6 +45,7 @@ const App: React.FC = () => {
   // =========================================================
   useEffect(() => {
     let intervalId: any;
+    let debugIntervalId: any;
 
     const processIncomingMessages = async () => {
       try {
@@ -58,9 +57,13 @@ const App: React.FC = () => {
             
             for (const msg of json.messages) {
                 const userText = msg.content;
+                const sender = msg.sender;
+                
+                // Tambahkan pesan user ke UI
+                // Note: Kita tampilkan semua pesan masuk untuk tujuan debugging, 
+                // meskipun nomor pengirim beda dengan targetPhone
                 const userMsg: Message = { role: 'user', content: userText };
 
-                // 1. Update UI dengan Pesan User
                 setMessages(prev => [...prev, userMsg]);
                 setData(prev => ({
                     ...prev,
@@ -69,32 +72,30 @@ const App: React.FC = () => {
                 
                 messagesRef.current = [...messagesRef.current, userMsg];
 
-                // 2. TRIGGER AI SEGERA
+                // TRIGGER AI SEGERA
                 setIsLoading(true);
-                
                 try {
                     const currentId = dataRef.current.id;
-                    const currentTarget = targetPhoneRef.current; // Gunakan nomor dari input UI
-                    
                     const responseText = await sendMessageToGemini(userText, currentId);
-                    
                     const aiMsg: Message = { role: 'assistant', content: responseText };
 
-                    // 3. Update UI dengan Jawaban AI
                     setMessages(prev => [...prev, aiMsg]);
                     setData(prev => ({
                         ...prev,
                         messages: [...prev.messages, aiMsg]
                     }));
 
-                    // 4. KIRIM KE WA ASLI (DENGAN TARGET DARI UI)
+                    // Kirim Balasan ke Nomor Pengirim Asli (agar reply nyambung)
+                    // Atau gunakan targetPhoneRef.current jika ingin memaksa
+                    const replyTarget = sender || targetPhoneRef.current;
+
                     await fetch(`${API_BASE_URL}/api/send-message`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
                             customerId: currentId,
                             message: responseText,
-                            target: currentTarget // Kirim nomor HP target ke backend
+                            target: replyTarget 
                         })
                     });
 
@@ -106,21 +107,39 @@ const App: React.FC = () => {
             }
         }
       } catch (error) {
-        // Silent error for polling
+         // silent error
       }
     };
 
-    if (isLiveSync) {
-      console.log(`Starting Live Sync polling to ${API_BASE_URL}...`);
-      intervalId = setInterval(processIncomingMessages, 3000); 
+    // Fungsi Debugging Terpisah
+    const checkWebhookStatus = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/debug`);
+            const json = await res.json();
+            if (json.receivedAt) {
+                setWebhookStatus({
+                    lastTime: json.receivedAt,
+                    lastSender: json.sender
+                });
+            }
+        } catch (e) {
+            console.error("Debug fetch failed");
+        }
     }
 
-    return () => clearInterval(intervalId);
+    if (isLiveSync) {
+      intervalId = setInterval(processIncomingMessages, 3000); 
+      // Cek status webhook tiap 5 detik untuk update UI debug
+      debugIntervalId = setInterval(checkWebhookStatus, 5000);
+      checkWebhookStatus(); // first run
+    }
+
+    return () => {
+        clearInterval(intervalId);
+        clearInterval(debugIntervalId);
+    };
   }, [isLiveSync]); 
 
-  // =========================================================
-  // HANDLE KIRIM PESAN MANUAL (Live Sync OFF)
-  // =========================================================
   const handleSendMessage = async (text: string) => {
     const userMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -151,10 +170,10 @@ const App: React.FC = () => {
     <div className="flex h-screen w-full bg-slate-100 font-sans overflow-hidden relative">
       
       {/* Top Control Bar */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 items-center flex-wrap justify-end pl-4 pointer-events-auto">
+      <div className="absolute top-4 right-4 z-50 flex gap-2 items-start flex-wrap justify-end pl-4 pointer-events-auto">
         
         {/* Target Phone Input */}
-        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200" title="Nomor HP Tujuan (untuk Testing)">
+        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 h-[34px]" title="Nomor HP Tujuan">
            <Phone size={14} className="text-slate-400" />
            <input 
               type="text" 
@@ -165,21 +184,41 @@ const App: React.FC = () => {
            />
         </div>
 
-        {/* Live Sync Toggle */}
-        <button 
-            onClick={() => setIsLiveSync(!isLiveSync)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs font-bold transition-all
-            ${isLiveSync 
-                ? 'bg-red-600 text-white border-red-700 animate-pulse ring-2 ring-red-200' 
-                : 'bg-white text-slate-500 hover:bg-slate-50'}`}
-        >
-            {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
-            {isLiveSync ? 'LIVE SYNC: ON' : 'LIVE SYNC: OFF'}
-        </button>
+        {/* Live Sync Toggle & Debug Info */}
+        <div className="flex flex-col items-end gap-1">
+            <button 
+                onClick={() => setIsLiveSync(!isLiveSync)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs font-bold transition-all h-[34px]
+                ${isLiveSync 
+                    ? 'bg-red-600 text-white border-red-700 animate-pulse ring-2 ring-red-200' 
+                    : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+            >
+                {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
+                {isLiveSync ? 'LIVE SYNC: ON' : 'LIVE SYNC: OFF'}
+            </button>
+            
+            {/* DEBUG INFO: Tampil hanya jika Live Sync ON */}
+            {isLiveSync && (
+                <div className="bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-90 backdrop-blur-sm border border-slate-600 flex flex-col items-end">
+                    <div className="flex items-center gap-1">
+                        <Activity size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-slate-400"} />
+                        <span className="font-semibold">Server Status:</span>
+                    </div>
+                    {webhookStatus.lastTime ? (
+                        <>
+                            <span className="text-green-300">Last Msg: {webhookStatus.lastTime}</span>
+                            <span className="text-slate-300 text-[9px]">From: {webhookStatus.lastSender}</span>
+                        </>
+                    ) : (
+                        <span className="text-red-300 italic">No webhook data received yet</span>
+                    )}
+                </div>
+            )}
+        </div>
 
         {/* Customer Selector */}
-        <div className="relative group">
-          <button className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50">
+        <div className="relative group h-[34px]">
+          <button className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-50 h-full">
             <Users size={14} />
             <span>Ganti Peserta</span>
             <ChevronDown size={12} />
@@ -202,21 +241,19 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* View Mode Toggle */}
-        <div className="flex bg-white rounded-lg shadow-md border border-slate-200 p-1">
+        {/* View Mode */}
+        <div className="flex bg-white rounded-lg shadow-md border border-slate-200 p-1 h-[34px] items-center">
           <button 
             onClick={() => setViewMode('dashboard')}
             className={`px-3 py-1 rounded text-xs font-medium flex items-center gap-2 transition-colors ${viewMode === 'dashboard' ? 'bg-bpjs-primary text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
           >
             <LayoutDashboard size={14} />
-            Dashboard
           </button>
           <button 
             onClick={() => setViewMode('customer')}
             className={`px-3 py-1 rounded text-xs font-medium flex items-center gap-2 transition-colors ${viewMode === 'customer' ? 'bg-bpjs-primary text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
           >
             <Smartphone size={14} />
-            Mobile View
           </button>
         </div>
       </div>
@@ -234,12 +271,6 @@ const App: React.FC = () => {
               isLoading={isLoading}
               isReadOnly={isLiveSync} 
             />
-            {isLiveSync && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/90 text-white text-[10px] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 pointer-events-none backdrop-blur-sm">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    Connected to {targetPhone} | Waiting for messages...
-                </div>
-            )}
           </div>
         </>
       ) : (

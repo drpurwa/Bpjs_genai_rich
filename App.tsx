@@ -17,7 +17,7 @@ const App: React.FC = () => {
   });
 
   // State untuk Debug Status Webhook
-  const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null}>({ lastTime: null, lastSender: null });
+  const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null, rawBody?: any}>({ lastTime: null, lastSender: null });
 
   useEffect(() => {
     localStorage.setItem('target_phone', targetPhone);
@@ -60,8 +60,6 @@ const App: React.FC = () => {
                 const sender = msg.sender;
                 
                 // Tambahkan pesan user ke UI
-                // Note: Kita tampilkan semua pesan masuk untuk tujuan debugging, 
-                // meskipun nomor pengirim beda dengan targetPhone
                 const userMsg: Message = { role: 'user', content: userText };
 
                 setMessages(prev => [...prev, userMsg]);
@@ -85,8 +83,7 @@ const App: React.FC = () => {
                         messages: [...prev.messages, aiMsg]
                     }));
 
-                    // Kirim Balasan ke Nomor Pengirim Asli (agar reply nyambung)
-                    // Atau gunakan targetPhoneRef.current jika ingin memaksa
+                    // Kirim Balasan ke Nomor Pengirim Asli
                     const replyTarget = sender || targetPhoneRef.current;
 
                     await fetch(`${API_BASE_URL}/api/send-message`, {
@@ -119,7 +116,8 @@ const App: React.FC = () => {
             if (json.receivedAt) {
                 setWebhookStatus({
                     lastTime: json.receivedAt,
-                    lastSender: json.sender
+                    lastSender: json.sender,
+                    rawBody: json.rawBody
                 });
             }
         } catch (e) {
@@ -199,18 +197,32 @@ const App: React.FC = () => {
             
             {/* DEBUG INFO: Tampil hanya jika Live Sync ON */}
             {isLiveSync && (
-                <div className="bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-90 backdrop-blur-sm border border-slate-600 flex flex-col items-end">
-                    <div className="flex items-center gap-1">
+                <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded opacity-95 backdrop-blur-sm border border-slate-600 flex flex-col items-start w-64 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600">
+                    <div className="flex items-center gap-1 mb-1 border-b border-slate-600 w-full pb-1">
                         <Activity size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-slate-400"} />
-                        <span className="font-semibold">Server Status:</span>
+                        <span className="font-semibold">Server Webhook Monitor</span>
                     </div>
                     {webhookStatus.lastTime ? (
                         <>
-                            <span className="text-green-300">Last Msg: {webhookStatus.lastTime}</span>
-                            <span className="text-slate-300 text-[9px]">From: {webhookStatus.lastSender}</span>
+                            <span className="text-green-300 block">Received: {webhookStatus.lastTime}</span>
+                            <span className="text-slate-300 block mb-1">From: {webhookStatus.lastSender}</span>
+                            {webhookStatus.rawBody && (
+                                <details className="w-full">
+                                    <summary className="cursor-pointer text-blue-300 hover:text-blue-200">Show Raw JSON</summary>
+                                    <pre className="text-[9px] text-slate-400 bg-slate-900 p-1 rounded mt-1 overflow-x-auto">
+                                        {JSON.stringify(webhookStatus.rawBody, null, 2)}
+                                    </pre>
+                                </details>
+                            )}
                         </>
                     ) : (
-                        <span className="text-red-300 italic">No webhook data received yet</span>
+                        <div className="text-red-300 italic text-center w-full py-2">
+                           Waiting for data... <br/>
+                           <span className="text-[9px] text-slate-400 not-italic">
+                             Pastikan URL di Fonnte: <br/>
+                             [domain]/whatsapp
+                           </span>
+                        </div>
                     )}
                 </div>
             )}

@@ -113,28 +113,41 @@ app.get('/api/poll-incoming', (req, res) => {
 // 3. WEBHOOK (INPUT DARI WA)
 // ==========================================
 app.get('/whatsapp', (req, res) => {
-    res.status(200).send("Webhook active.");
+    res.status(200).send("Webhook active. Please use POST.");
 });
 
 app.post('/whatsapp', async (req, res) => {
-  const incomingMsg = req.body.message; 
-  const senderNumber = req.body.sender;
+  // Tangkap APAPUN yang dikirim Fonnte untuk debugging
+  const body = req.body;
+  
+  // Log Raw Data ke Console Server
+  console.log("====================================");
+  console.log("[INCOMING WEBHOOK RAW]:", JSON.stringify(body, null, 2));
+  console.log("====================================");
 
-  // Update Debug Data
-  console.log(`[INCOMING WEBHOOK] Dari: ${senderNumber} | Pesan: ${incomingMsg}`);
+  // Simpan data terakhir untuk dilihat di Frontend
   global.lastWebhookData = {
       receivedAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
-      sender: senderNumber,
-      message: incomingMsg,
-      rawBody: req.body // Simpan raw body untuk diagnosa
+      sender: body.sender || "Unknown",
+      message: body.message || "No Message Content",
+      rawBody: body 
   };
 
-  if (incomingMsg) {
+  // Logic Proses Pesan
+  const incomingMsg = body.message; 
+  const senderNumber = body.sender;
+
+  // Filter: Pastikan ini pesan (bukan status update) dan ada isinya
+  if (incomingMsg && senderNumber) {
+      // Masukkan ke antrian untuk diproses Frontend
       global.incomingMessageQueue.push({
           content: incomingMsg,
           sender: senderNumber,
           timestamp: Date.now()
       });
+      console.log(`✅ Pesan masuk antrian: ${incomingMsg}`);
+  } else {
+      console.log("⚠️ Webhook diterima tapi tidak dianggap pesan chat (Mungkin status update/device info)");
   }
 
   res.status(200).send('OK');

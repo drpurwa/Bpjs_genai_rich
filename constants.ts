@@ -3,10 +3,13 @@ import { CustomerData, KnowledgeBase } from './types';
 // ==========================================
 // KONFIGURASI SERVER
 // ==========================================
-// URL Backend Railway Anda
+// PENTING: Ganti URL di bawah ini dengan URL Railway Backend Anda yang asli
+// Contoh: 'https://rich-backend-production.up.railway.app'
+const LIVE_BACKEND_URL = 'https://bpjsgenairich-production.up.railway.app'; 
+
 export const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://bpjsgenairich-production.up.railway.app' 
-  : 'http://localhost:3000'; 
+  ? LIVE_BACKEND_URL 
+  : LIVE_BACKEND_URL; // Kita paksa pakai Live URL meskipun di local dev agar bisa tes koneksi Fonnte
 
 // ==========================================
 // DATA PESERTA 1: IBU (WIRASWASTA) - Hard Complainer / Low Credibility

@@ -102,9 +102,16 @@ app.get('/api/messages/:customerId', (req, res) => {
 // 3. WEBHOOK: TERIMA PESAN DARI FONNTE
 // ==========================================
 // Pastikan URL Webhook di Dashboard Fonnte diset ke: https://url-railway-anda.app/whatsapp
+
+// A. Handle GET Request (Untuk Verifikasi/Check dari Fonnte)
+app.get('/whatsapp', (req, res) => {
+    res.status(200).send("Webhook is active. Please use POST method to send data.");
+});
+
+// B. Handle POST Request (Data Pesan Masuk yang Sebenarnya)
 app.post('/whatsapp', async (req, res) => {
-  // Struktur Data Webhook Fonnte berbeda dengan Twilio
-  // Biasanya: { "device": "...", "sender": "628...", "message": "...", "name": "..." }
+  // Struktur Data Webhook Fonnte
+  // { "device": "...", "sender": "628...", "message": "...", "name": "..." }
   
   const incomingMsg = req.body.message; 
   const senderNumber = req.body.sender;

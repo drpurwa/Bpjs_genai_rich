@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity } from 'lucide-react';
+import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity, Wifi, WifiOff, PlayCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -16,8 +16,10 @@ const App: React.FC = () => {
     return localStorage.getItem('target_phone') || '08123456789';
   });
 
-  // State untuk Debug Status Webhook
+  // State Debugging
   const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null, rawBody?: any}>({ lastTime: null, lastSender: null });
+  const [backendConnection, setBackendConnection] = useState<'checking' | 'connected' | 'error'>('checking');
+  const [simulating, setSimulating] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('target_phone', targetPhone);
@@ -50,6 +52,10 @@ const App: React.FC = () => {
     const processIncomingMessages = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/poll-incoming`);
+        
+        // Update connection status
+        setBackendConnection('connected');
+
         const json = await response.json();
 
         if (json.hasNew && json.messages && json.messages.length > 0) {
@@ -59,7 +65,6 @@ const App: React.FC = () => {
                 const userText = msg.content;
                 const sender = msg.sender;
                 
-                // Tambahkan pesan user ke UI
                 const userMsg: Message = { role: 'user', content: userText };
 
                 setMessages(prev => [...prev, userMsg]);
@@ -70,7 +75,7 @@ const App: React.FC = () => {
                 
                 messagesRef.current = [...messagesRef.current, userMsg];
 
-                // TRIGGER AI SEGERA
+                // TRIGGER AI
                 setIsLoading(true);
                 try {
                     const currentId = dataRef.current.id;
@@ -83,7 +88,6 @@ const App: React.FC = () => {
                         messages: [...prev.messages, aiMsg]
                     }));
 
-                    // Kirim Balasan ke Nomor Pengirim Asli
                     const replyTarget = sender || targetPhoneRef.current;
 
                     await fetch(`${API_BASE_URL}/api/send-message`, {
@@ -104,21 +108,22 @@ const App: React.FC = () => {
             }
         }
       } catch (error) {
-         // silent error
+         setBackendConnection('error');
       }
     };
 
-    // Fungsi Debugging Terpisah
     const checkWebhookStatus = async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/api/debug`);
-            const json = await res.json();
-            if (json.receivedAt) {
-                setWebhookStatus({
-                    lastTime: json.receivedAt,
-                    lastSender: json.sender,
-                    rawBody: json.rawBody
-                });
+            if (res.ok) {
+                const json = await res.json();
+                if (json.receivedAt) {
+                    setWebhookStatus({
+                        lastTime: json.receivedAt,
+                        lastSender: json.sender,
+                        rawBody: json.rawBody
+                    });
+                }
             }
         } catch (e) {
             console.error("Debug fetch failed");
@@ -127,9 +132,10 @@ const App: React.FC = () => {
 
     if (isLiveSync) {
       intervalId = setInterval(processIncomingMessages, 3000); 
-      // Cek status webhook tiap 5 detik untuk update UI debug
       debugIntervalId = setInterval(checkWebhookStatus, 5000);
-      checkWebhookStatus(); // first run
+      checkWebhookStatus(); 
+      // Initial ping check
+      fetch(API_BASE_URL).then(r => r.ok ? setBackendConnection('connected') : setBackendConnection('error')).catch(() => setBackendConnection('error'));
     }
 
     return () => {
@@ -137,6 +143,34 @@ const App: React.FC = () => {
         clearInterval(debugIntervalId);
     };
   }, [isLiveSync]); 
+
+  // New Function: Simulate Incoming Webhook
+  const handleSimulateWebhook = async () => {
+    setSimulating(true);
+    try {
+        // Kita tembak langsung endpoint /whatsapp di backend sendiri
+        // Seolah-olah kita adalah Fonnte
+        const res = await fetch(`${API_BASE_URL}/whatsapp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sender: '628999999999',
+                message: 'Halo, ini pesan test simulasi dari Dashboard!',
+                api_key: 'test-simulation' 
+            })
+        });
+        
+        if (res.ok) {
+            alert("Simulasi Terkirim! Cek indikator status sebentar lagi.");
+        } else {
+            alert("Gagal kirim simulasi. Backend error.");
+        }
+    } catch (e) {
+        alert("Gagal menghubungi backend untuk simulasi.");
+    } finally {
+        setSimulating(false);
+    }
+  };
 
   const handleSendMessage = async (text: string) => {
     const userMsg: Message = { role: 'user', content: text };
@@ -197,32 +231,63 @@ const App: React.FC = () => {
             
             {/* DEBUG INFO: Tampil hanya jika Live Sync ON */}
             {isLiveSync && (
-                <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded opacity-95 backdrop-blur-sm border border-slate-600 flex flex-col items-start w-64 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600">
-                    <div className="flex items-center gap-1 mb-1 border-b border-slate-600 w-full pb-1">
-                        <Activity size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-slate-400"} />
-                        <span className="font-semibold">Server Webhook Monitor</span>
+                <div className="bg-slate-800 text-white text-[10px] px-3 py-2 rounded opacity-95 backdrop-blur-sm border border-slate-600 flex flex-col items-start w-72 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 shadow-xl">
+                    
+                    {/* CONNECTION HEALTH CHECK */}
+                    <div className="flex items-center gap-2 mb-2 border-b border-slate-600 w-full pb-1">
+                        {backendConnection === 'connected' ? <Wifi size={12} className="text-green-400"/> : <WifiOff size={12} className="text-red-400"/>}
+                        <span className={backendConnection === 'connected' ? "text-green-300" : "text-red-300 font-bold"}>
+                            {backendConnection === 'checking' ? "Connecting..." : 
+                             backendConnection === 'connected' ? "Backend Connected" : "Backend Disconnected"}
+                        </span>
                     </div>
-                    {webhookStatus.lastTime ? (
-                        <>
-                            <span className="text-green-300 block">Received: {webhookStatus.lastTime}</span>
-                            <span className="text-slate-300 block mb-1">From: {webhookStatus.lastSender}</span>
-                            {webhookStatus.rawBody && (
-                                <details className="w-full">
-                                    <summary className="cursor-pointer text-blue-300 hover:text-blue-200">Show Raw JSON</summary>
-                                    <pre className="text-[9px] text-slate-400 bg-slate-900 p-1 rounded mt-1 overflow-x-auto">
-                                        {JSON.stringify(webhookStatus.rawBody, null, 2)}
-                                    </pre>
-                                </details>
-                            )}
-                        </>
-                    ) : (
-                        <div className="text-red-300 italic text-center w-full py-2">
-                           Waiting for data... <br/>
-                           <span className="text-[9px] text-slate-400 not-italic">
-                             Pastikan URL di Fonnte: <br/>
-                             [domain]/whatsapp
-                           </span>
+
+                    <div className="flex items-center justify-between w-full mb-1 pb-1">
+                        <div className="flex items-center gap-1">
+                            <Activity size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-slate-400"} />
+                            <span className="font-semibold">Incoming Webhook</span>
                         </div>
+                        
+                        {/* SIMULATION BUTTON */}
+                        <button 
+                            onClick={handleSimulateWebhook}
+                            disabled={simulating || backendConnection !== 'connected'}
+                            className="text-[9px] bg-slate-700 hover:bg-slate-600 border border-slate-500 px-2 py-0.5 rounded flex items-center gap-1 disabled:opacity-50"
+                        >
+                            <PlayCircle size={10} /> Test Webhook
+                        </button>
+                    </div>
+
+                    {backendConnection === 'error' ? (
+                         <div className="text-red-300 bg-red-900/30 p-1 rounded mb-1 text-[9px] w-full">
+                            <strong>FATAL:</strong> Frontend tidak bisa menghubungi Backend. <br/>
+                            1. Cek Railway App apa server mati (Crashed)? <br/>
+                            2. Cek apakah URL di constants.ts benar?
+                         </div>
+                    ) : (
+                        webhookStatus.lastTime ? (
+                            <>
+                                <span className="text-green-300 block">Recv: {webhookStatus.lastTime}</span>
+                                <span className="text-slate-300 block mb-1">From: {webhookStatus.lastSender}</span>
+                                {webhookStatus.rawBody && (
+                                    <details className="w-full">
+                                        <summary className="cursor-pointer text-blue-300 hover:text-blue-200">Show Raw JSON</summary>
+                                        <pre className="text-[9px] text-slate-400 bg-slate-900 p-1 rounded mt-1 overflow-x-auto max-h-32">
+                                            {JSON.stringify(webhookStatus.rawBody, null, 2)}
+                                        </pre>
+                                    </details>
+                                )}
+                            </>
+                        ) : (
+                            <div className="text-yellow-200/80 italic text-center w-full py-2 border border-slate-600 rounded bg-slate-700/50">
+                            Waiting for Webhook... <br/>
+                            <div className="text-[9px] text-slate-400 not-italic mt-2 text-left space-y-1">
+                                <p>1. Coba klik tombol <strong>"Test Webhook"</strong> di atas. Jika berhasil, berarti Backend OK.</p>
+                                <p>2. Kirim pesan WA dari HP Pribadi ke Nomor Bot. Balasan Bot tidak memicu webhook.</p>
+                                <p>3. Pastikan URL Fonnte: <code>[URL_RAILWAY]/whatsapp</code></p>
+                            </div>
+                            </div>
+                        )
                     )}
                 </div>
             )}

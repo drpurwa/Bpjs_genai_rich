@@ -18,6 +18,7 @@ if (!FONNTE_TOKEN) {
 }
 
 app.use(cors());
+// Fonnte kadang mengirim JSON, kadang urlencoded. Kita handle keduanya.
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -29,7 +30,8 @@ global.lastWebhookData = {
     receivedAt: null,
     sender: null,
     message: null,
-    rawBody: null
+    rawBody: null,
+    contentType: null
 };
 
 const messageStore = {};
@@ -54,7 +56,11 @@ const formatPhoneNumber = (number) => {
 };
 
 app.get('/', (req, res) => {
-  res.send('RICH Backend is running! 🚀');
+  res.json({ 
+    status: 'Rich Backend Online', 
+    version: '1.2.0 (Debug Enabled)',
+    time: new Date().toISOString() 
+  });
 });
 
 // ==========================================
@@ -117,29 +123,28 @@ app.get('/whatsapp', (req, res) => {
 });
 
 app.post('/whatsapp', async (req, res) => {
-  // Tangkap APAPUN yang dikirim Fonnte untuk debugging
   const body = req.body;
+  const contentType = req.headers['content-type'];
   
-  // Log Raw Data ke Console Server
-  console.log("====================================");
-  console.log("[INCOMING WEBHOOK RAW]:", JSON.stringify(body, null, 2));
-  console.log("====================================");
+  // Log Raw Data ke Console Server (Lihat di Railway Logs)
+  console.log(`[WEBHOOK HIT] Content-Type: ${contentType}`);
+  console.log(`[BODY]: ${JSON.stringify(body)}`);
 
   // Simpan data terakhir untuk dilihat di Frontend
   global.lastWebhookData = {
       receivedAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
       sender: body.sender || "Unknown",
       message: body.message || "No Message Content",
-      rawBody: body 
+      rawBody: body,
+      contentType: contentType
   };
 
   // Logic Proses Pesan
-  const incomingMsg = body.message; 
-  const senderNumber = body.sender;
+  // Fonnte kadang kirim 'message', kadang 'data.message' tergantung setting
+  const incomingMsg = body.message || (body.data ? body.data.message : null); 
+  const senderNumber = body.sender || (body.data ? body.data.sender : null);
 
-  // Filter: Pastikan ini pesan (bukan status update) dan ada isinya
   if (incomingMsg && senderNumber) {
-      // Masukkan ke antrian untuk diproses Frontend
       global.incomingMessageQueue.push({
           content: incomingMsg,
           sender: senderNumber,
@@ -147,7 +152,7 @@ app.post('/whatsapp', async (req, res) => {
       });
       console.log(`✅ Pesan masuk antrian: ${incomingMsg}`);
   } else {
-      console.log("⚠️ Webhook diterima tapi tidak dianggap pesan chat (Mungkin status update/device info)");
+      console.log("⚠️ Webhook masuk tapi format tidak dikenali sebagai pesan chat.");
   }
 
   res.status(200).send('OK');

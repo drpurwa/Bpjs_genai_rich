@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CustomerPanel } from './components/CustomerPanel';
 import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
@@ -15,42 +15,20 @@ const App: React.FC = () => {
   // Mode sinkronisasi dengan WhatsApp asli
   const [isLiveSync, setIsLiveSync] = useState(false);
 
+  // Ref untuk menghindari stale closure di dalam setInterval
+  const dataRef = useRef(data);
+  const messagesRef = useRef(messages);
+  
+  useEffect(() => {
+    dataRef.current = data;
+    messagesRef.current = messages;
+  }, [data, messages]);
+
   // Initialize Chat Session 
   useEffect(() => {
     initializeGeminiChat(data);
     setMessages(data.messages);
-  }, [data]);
-
-  // Fungsi helper agar AI menjawab pesan yang masuk dari WA
-  const handleTriggerAIResponse = async (userText: string, customerId: string) => {
-      setIsLoading(true);
-      try {
-        const responseText = await sendMessageToGemini(userText, customerId);
-        
-        // Tampilkan jawaban AI di UI
-        const aiMsg: Message = { role: 'assistant', content: responseText };
-        setMessages(prev => [...prev, aiMsg]);
-        setData(prev => ({
-            ...prev,
-            messages: [...prev.messages, aiMsg]
-        }));
-
-        // KIRIM JAWABAN AI BALIK KE WA ASLI
-        await fetch(`${API_BASE_URL}/api/send-message`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                customerId: customerId,
-                message: responseText
-            })
-        });
-
-      } catch (e) {
-          console.error(e);
-      } finally {
-          setIsLoading(false);
-      }
-  };
+  }, [data.id]); // Re-init only when Customer ID changes, not on every message
 
   // =========================================================
   // LOGIC SINKRONISASI WA (POLLING)
@@ -58,82 +36,96 @@ const App: React.FC = () => {
   useEffect(() => {
     let intervalId: any;
 
-    if (isLiveSync) {
-      console.log(`Starting Live Sync with Backend at ${API_BASE_URL}...`);
-      intervalId = setInterval(async () => {
-        try {
-          // Poll ke Backend: "Ada pesan baru dari HP +628123810892 gak?"
-          const response = await fetch(`${API_BASE_URL}/api/poll-incoming`);
-          const json = await response.json();
+    const processIncomingMessages = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/poll-incoming`);
+        const json = await response.json();
 
-          if (json.hasNew && json.content) {
-            console.log("New Message from WA:", json.content);
-            const userMsg: Message = { role: 'user', content: json.content };
+        // Cek jika ada pesan (backend baru mengembalikan array 'messages')
+        if (json.hasNew && json.messages && json.messages.length > 0) {
+            console.log(`📥 Received ${json.messages.length} new messages from WA`);
             
-            // Tambahkan ke UI
-            setMessages(prev => [...prev, userMsg]);
-            
-            // Update data customer state
-            setData(prev => ({
-               ...prev,
-               messages: [...prev.messages, userMsg]
-            }));
+            // Loop semua pesan yang masuk (Queue)
+            for (const msg of json.messages) {
+                const userText = msg.content;
+                const userMsg: Message = { role: 'user', content: userText };
 
-            // TRIGGER AI OTOMATIS MENJAWAB SETELAH MENERIMA PESAN WA
-            handleTriggerAIResponse(json.content, data.id);
-          }
-        } catch (error) {
-          console.warn("Polling failed. Is backend running?", error);
+                // 1. Update UI dengan Pesan User dulu
+                setMessages(prev => [...prev, userMsg]);
+                setData(prev => ({
+                    ...prev,
+                    messages: [...prev.messages, userMsg]
+                }));
+                
+                // Update refs segera agar loop berikutnya tahu state terbaru
+                messagesRef.current = [...messagesRef.current, userMsg];
+
+                // 2. TRIGGER AI SEGERA
+                setIsLoading(true);
+                
+                try {
+                    // Gunakan dataRef untuk memastikan konteks ID customer benar
+                    const currentId = dataRef.current.id;
+                    const responseText = await sendMessageToGemini(userText, currentId);
+                    
+                    const aiMsg: Message = { role: 'assistant', content: responseText };
+
+                    // 3. Update UI dengan Jawaban AI
+                    setMessages(prev => [...prev, aiMsg]);
+                    setData(prev => ({
+                        ...prev,
+                        messages: [...prev.messages, aiMsg]
+                    }));
+
+                    // 4. KIRIM KE WA ASLI
+                    await fetch(`${API_BASE_URL}/api/send-message`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            customerId: currentId,
+                            message: responseText
+                        })
+                    });
+
+                } catch (err) {
+                    console.error("Error processing auto-reply:", err);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
         }
-      }, 3000); // Cek setiap 3 detik
+      } catch (error) {
+        // Silent error for polling
+      }
+    };
+
+    if (isLiveSync) {
+      console.log(`Starting Live Sync polling to ${API_BASE_URL}...`);
+      intervalId = setInterval(processIncomingMessages, 3000); // Poll tiap 3 detik
     }
 
     return () => clearInterval(intervalId);
-  }, [isLiveSync, data.id]);
+  }, [isLiveSync]); // Hanya re-run jika toggle LiveSync berubah
 
   // =========================================================
-  // HANDLE KIRIM PESAN (DARI UI)
+  // HANDLE KIRIM PESAN MANUAL (Hanya Aktif saat Live Sync OFF)
   // =========================================================
   const handleSendMessage = async (text: string) => {
-    if (isLiveSync) {
-        // --- MODE LIVE (Kirim ke WA) ---
-        const aiMsg: Message = { role: 'assistant', content: text };
-        setMessages(prev => [...prev, aiMsg]);
-        
-        setIsLoading(true);
-        try {
-            // Kirim ke Backend -> Twilio
-            await fetch(`${API_BASE_URL}/api/send-message`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    customerId: data.id,
-                    message: text
-                })
-            });
-        } catch (error) {
-            console.error("Gagal kirim WA", error);
-        } finally {
-            setIsLoading(false);
-        }
+    // Mode Simulasi Lokal
+    const userMsg: Message = { role: 'user', content: text };
+    setMessages(prev => [...prev, userMsg]);
+    setData(prev => ({ ...prev, messages: [...prev.messages, userMsg] }));
 
-    } else {
-        // --- MODE SIMULASI LOKAL (User vs AI) ---
-        const userMsg: Message = { role: 'user', content: text };
-        setMessages(prev => [...prev, userMsg]);
-        setData(prev => ({ ...prev, messages: [...prev.messages, userMsg] }));
-
-        setIsLoading(true);
-        try {
-          const responseText = await sendMessageToGemini(text, data.id);
-          const aiMsg: Message = { role: 'assistant', content: responseText };
-          setMessages(prev => [...prev, aiMsg]);
-          setData(prev => ({ ...prev, messages: [...prev.messages, aiMsg] }));
-        } catch (error) {
-          console.error("Gemini Error", error);
-        } finally {
-          setIsLoading(false);
-        }
+    setIsLoading(true);
+    try {
+      const responseText = await sendMessageToGemini(text, data.id);
+      const aiMsg: Message = { role: 'assistant', content: responseText };
+      setMessages(prev => [...prev, aiMsg]);
+      setData(prev => ({ ...prev, messages: [...prev.messages, aiMsg] }));
+    } catch (error) {
+      console.error("Gemini Error", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -156,12 +148,12 @@ const App: React.FC = () => {
             onClick={() => setIsLiveSync(!isLiveSync)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-xs font-bold transition-all
             ${isLiveSync 
-                ? 'bg-red-100 text-red-700 border-red-300 animate-pulse' 
+                ? 'bg-red-600 text-white border-red-700 animate-pulse ring-2 ring-red-200' 
                 : 'bg-white text-slate-500 hover:bg-slate-50'}`}
-            title={isLiveSync ? "Terhubung ke WhatsApp +628123810892" : "Klik untuk hubungkan ke Backend"}
+            title={isLiveSync ? "Mode Otomatis: AI membalas pesan WA masuk" : "Mode Manual: Simulasi Lokal"}
         >
             {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
-            {isLiveSync ? 'LIVE SYNC ON' : 'OFFLINE MODE'}
+            {isLiveSync ? 'LIVE SYNC: ON' : 'LIVE SYNC: OFF'}
         </button>
 
         {/* Customer Selector */}
@@ -218,11 +210,13 @@ const App: React.FC = () => {
             <ChatInterface 
               messages={messages} 
               onSendMessage={handleSendMessage} 
-              isLoading={isLoading} 
+              isLoading={isLoading}
+              isReadOnly={isLiveSync} // Matikan input saat Live Sync
             />
             {isLiveSync && (
-                <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/70 text-white text-[10px] px-3 py-1 rounded-full pointer-events-none">
-                    Connected to: +628123810892
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/90 text-white text-[10px] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 pointer-events-none backdrop-blur-sm">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    Connected to WhatsApp (Fonnte) | Waiting for incoming messages...
                 </div>
             )}
           </div>
@@ -236,7 +230,8 @@ const App: React.FC = () => {
                <ChatInterface 
                 messages={messages} 
                 onSendMessage={handleSendMessage} 
-                isLoading={isLoading} 
+                isLoading={isLoading}
+                isReadOnly={isLiveSync}
               />
             </div>
             <div className="h-1 bg-slate-100 w-full flex justify-center pb-2">

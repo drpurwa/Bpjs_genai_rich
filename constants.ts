@@ -3,10 +3,9 @@ import { CustomerData, KnowledgeBase } from './types';
 // ==========================================
 // KONFIGURASI SERVER
 // ==========================================
-// Ganti URL ini setelah Anda deploy Backend ke Railway
-// Contoh: 'https://rich-backend-production.up.railway.app'
+// URL Backend Railway Anda
 export const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://MASUKKAN-URL-RAILWAY-ANDA-DISINI.up.railway.app' 
+  ? 'https://bpjsgenairich-production.up.railway.app' 
   : 'http://localhost:3000'; 
 
 // ==========================================

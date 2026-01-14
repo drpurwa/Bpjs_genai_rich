@@ -2,25 +2,31 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const twilio = require('twilio');
-const { MessagingResponse } = twilio.twiml;
+const axios = require('axios'); // Ganti Twilio dengan Axios
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // ==========================================
-// KONFIGURASI NOMOR TUJUAN
+// KONFIGURASI FONNTE
 // ==========================================
-// Diambil dari file .env. Contoh isi .env:
-// TARGET_PHONE_NUMBER=whatsapp:+628123810892
-const TARGET_PHONE_NUMBER = process.env.TARGET_PHONE_NUMBER;
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
+let TARGET_PHONE_NUMBER = process.env.TARGET_PHONE_NUMBER;
 
-if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !TARGET_PHONE_NUMBER) {
-  console.error("ERROR: Harap lengkapi file .env di folder backend dengan TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, dan TARGET_PHONE_NUMBER");
-  process.exit(1);
+if (!FONNTE_TOKEN || !TARGET_PHONE_NUMBER) {
+  console.error("ERROR: Harap lengkapi file .env dengan FONNTE_TOKEN dan TARGET_PHONE_NUMBER");
 }
 
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+// Fonnte tidak butuh prefix 'whatsapp:', tapi butuh nomor format 62 (bukan 08)
+// Kita bersihkan format nomor
+if (TARGET_PHONE_NUMBER) {
+    // Hapus 'whatsapp:' jika ada (sisa config lama)
+    TARGET_PHONE_NUMBER = TARGET_PHONE_NUMBER.replace('whatsapp:', '');
+    // Ganti 08 di depan dengan 62
+    if (TARGET_PHONE_NUMBER.startsWith('08')) {
+        TARGET_PHONE_NUMBER = '62' + TARGET_PHONE_NUMBER.slice(1);
+    }
+}
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -31,7 +37,6 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // ==========================================
 const messageStore = {};
 
-// Fungsi helper untuk menyimpan pesan
 const saveMessage = (customerId, role, content) => {
   if (!messageStore[customerId]) {
     messageStore[customerId] = [];
@@ -44,33 +49,48 @@ const saveMessage = (customerId, role, content) => {
 };
 
 // ==========================================
-// 1. API: KIRIM PESAN DARI FRONTEND KE WA
+// 0. HEALTH CHECK
+// ==========================================
+app.get('/', (req, res) => {
+  res.send('RICH Backend (Fonnte Version) is running! 🚀');
+});
+
+// ==========================================
+// 1. API: KIRIM PESAN (VIA FONNTE)
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
     const { customerId, message } = req.body;
 
-    console.log(`[OUTGOING] Ke ${TARGET_PHONE_NUMBER} (Ref ID: ${customerId}): ${message}`);
+    console.log(`[OUTGOING] To: ${TARGET_PHONE_NUMBER} | Msg: ${message}`);
     
     try {
-        const msg = await twilioClient.messages.create({
-            from: 'whatsapp:+14155238886', // Nomor Sandbox Twilio (Default)
-            to: TARGET_PHONE_NUMBER,       // Nomor HP dari .env
-            body: message
+        const response = await axios.post('https://api.fonnte.com/send', {
+            target: TARGET_PHONE_NUMBER,
+            message: message,
+            countryCode: '62' // Optional, default 62
+        }, {
+            headers: {
+                'Authorization': FONNTE_TOKEN
+            }
         });
 
-        // Simpan ke history
+        console.log(`[FONNTE SUCCESS] Status: ${response.data.status}`);
+        
         saveMessage(customerId, 'assistant', message);
-
-        res.json({ success: true, sid: msg.sid });
+        res.json({ success: true, detail: response.data });
 
     } catch (error) {
-        console.error("Twilio Error:", error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error(`[FONNTE FAILED]`, error.response ? error.response.data : error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            provider: 'Fonnte' 
+        });
     }
 });
 
 // ==========================================
-// 2. API: FRONTEND AMBIL PESAN TERBARU (POLLING)
+// 2. API: POLLING PESAN
 // ==========================================
 app.get('/api/messages/:customerId', (req, res) => {
     const { customerId } = req.params;
@@ -79,22 +99,31 @@ app.get('/api/messages/:customerId', (req, res) => {
 });
 
 // ==========================================
-// 3. WEBHOOK: TERIMA BALASAN DARI WA ASLI
+// 3. WEBHOOK: TERIMA PESAN DARI FONNTE
 // ==========================================
+// Pastikan URL Webhook di Dashboard Fonnte diset ke: https://url-railway-anda.app/whatsapp
 app.post('/whatsapp', async (req, res) => {
-  const incomingMsg = req.body.Body;
-  const senderNumber = req.body.From;
+  // Struktur Data Webhook Fonnte berbeda dengan Twilio
+  // Biasanya: { "device": "...", "sender": "628...", "message": "...", "name": "..." }
+  
+  const incomingMsg = req.body.message; 
+  const senderNumber = req.body.sender;
+
+  // Filter: Hanya terima dari nomor target (agar tidak spam dari grup/orang lain)
+  // Optional: Uncomment jika ingin strict
+  // if (senderNumber !== TARGET_PHONE_NUMBER) return res.end();
 
   console.log(`[INCOMING] Dari ${senderNumber}: ${incomingMsg}`);
 
-  // Simpan ke global variable untuk polling
-  global.latestIncomingMessage = {
-      content: incomingMsg,
-      timestamp: Date.now()
-  };
+  if (incomingMsg) {
+      global.latestIncomingMessage = {
+          content: incomingMsg,
+          timestamp: Date.now()
+      };
+  }
 
-  const twiml = new MessagingResponse();
-  res.type('text/xml').send(twiml.toString());
+  // Fonnte tidak butuh respon TwiML, cukup 200 OK
+  res.status(200).send('OK');
 });
 
 // Endpoint Polling Frontend
@@ -110,8 +139,8 @@ app.get('/api/poll-incoming', (req, res) => {
 
 app.listen(port, () => {
   console.log(`--------------------------------------------------`);
-  console.log(`🚀 Backend Server berjalan di port ${port}`);
-  console.log(`📱 Target WhatsApp: ${TARGET_PHONE_NUMBER}`);
-  console.log(`🔗 Jangan lupa jalankan: ngrok http ${port}`);
+  console.log(`🚀 Backend (Fonnte) berjalan di port ${port}`);
+  console.log(`📱 Target: ${TARGET_PHONE_NUMBER}`);
+  console.log(`🔗 Webhook URL untuk Fonnte: https://bpjsgenairich-production.up.railway.app/whatsapp`);
   console.log(`--------------------------------------------------`);
 });

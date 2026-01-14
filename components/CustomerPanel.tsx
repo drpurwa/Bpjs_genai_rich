@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { CustomerData } from '../types';
 import { InfoCard } from './InfoCard';
 import { API_BASE_URL } from '../constants';
-import { User, CreditCard, History, Activity, AlertTriangle, Smartphone, BrainCircuit, Send, CheckCircle, Loader2 } from 'lucide-react';
+import { User, CreditCard, History, Activity, AlertTriangle, Smartphone, BrainCircuit, Send, CheckCircle, Loader2, XCircle } from 'lucide-react';
 
 interface CustomerPanelProps {
   data: CustomerData;
@@ -10,6 +10,7 @@ interface CustomerPanelProps {
 
 export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
   const [sendingStatus, setSendingStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
@@ -18,6 +19,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
   // Logic untuk memanggil Backend Node.js
   const handleSendReminder = async () => {
     setSendingStatus('sending');
+    setErrorMessage('');
+    
     try {
       // Menggunakan URL dinamis dari constants.ts
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
@@ -34,16 +37,19 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
         }),
       });
 
-      if (response.ok) {
+      const json = await response.json();
+
+      if (response.ok && json.success) {
         setSendingStatus('success');
         setTimeout(() => setSendingStatus('idle'), 3000);
       } else {
         setSendingStatus('error');
+        setErrorMessage(json.error || 'Gagal mengirim pesan via Backend.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gagal menghubungi backend:", error);
       setSendingStatus('error');
-      setTimeout(() => setSendingStatus('idle'), 3000);
+      setErrorMessage(error.message || 'Network Error / Backend Down');
     }
   };
 
@@ -79,13 +85,13 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
           {sendingStatus === 'idle' && (
             <>
               <Send size={16} />
-              Kirim WA Reminder (Backend)
+              Kirim WA Reminder (Real)
             </>
           )}
           {sendingStatus === 'sending' && (
             <>
               <Loader2 size={16} className="animate-spin" />
-              Mengirim ke API...
+              Mengirim ke WA...
             </>
           )}
           {sendingStatus === 'success' && (
@@ -95,12 +101,26 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data }) => {
             </>
           )}
           {sendingStatus === 'error' && (
-             <span>Gagal (Cek Console)</span>
+             <>
+              <XCircle size={16} />
+              Gagal Kirim
+             </>
           )}
         </button>
-        <p className="text-[10px] text-center text-slate-400 mt-1">
-           *Pastikan backend aktif di port 3000
-        </p>
+        
+        {sendingStatus === 'error' && errorMessage && (
+          <div className="mt-2 text-[10px] text-red-600 bg-red-50 p-2 rounded border border-red-200 break-words leading-tight">
+             <strong>Error:</strong> {errorMessage}
+             <br/>
+             <span className="opacity-75 italic mt-1 block">Pastikan Token Fonnte valid & Device Connected.</span>
+          </div>
+        )}
+        
+        {sendingStatus !== 'error' && (
+          <p className="text-[10px] text-center text-slate-400 mt-1">
+             *Menggunakan Fonnte Gateway. Pastikan device WA sudah scan QR.
+          </p>
+        )}
       </div>
 
       {/* Profile Card */}

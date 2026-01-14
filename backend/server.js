@@ -18,7 +18,7 @@ if (!FONNTE_TOKEN) {
 }
 
 app.use(cors());
-// Fonnte kadang mengirim JSON, kadang urlencoded. Kita handle keduanya.
+// Fonnte kadang mengirim JSON, kadang urlencoded. Kita handle keduanya-.
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -58,7 +58,7 @@ const formatPhoneNumber = (number) => {
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Rich Backend Online', 
-    version: '1.2.0 (Debug Enabled)',
+    version: '1.2.1 (POST Only Webhook)',
     time: new Date().toISOString() 
   });
 });
@@ -118,9 +118,7 @@ app.get('/api/poll-incoming', (req, res) => {
 // ==========================================
 // 3. WEBHOOK (INPUT DARI WA)
 // ==========================================
-app.get('/whatsapp', (req, res) => {
-    res.status(200).send("Webhook active. Please use POST.");
-});
+// NOTE: Fonnte update - Webhook is now POST only. GET method removed.
 
 app.post('/whatsapp', async (req, res) => {
   const body = req.body;
@@ -128,33 +126,38 @@ app.post('/whatsapp', async (req, res) => {
   
   // Log Raw Data ke Console Server (Lihat di Railway Logs)
   console.log(`[WEBHOOK HIT] Content-Type: ${contentType}`);
-  console.log(`[BODY]: ${JSON.stringify(body)}`);
+  
+  // Fonnte sends 'id' which is the InboxID (can be used for reply reference)
+  // Data structure might be directly in body or in body.data depending on configuration
+  const incomingMsg = body.message || (body.data ? body.data.message : null); 
+  const senderNumber = body.sender || (body.data ? body.data.sender : null);
+  const inboxId = body.id || (body.data ? body.data.id : null);
+
+  console.log(`[DATA] Sender: ${senderNumber} | ID: ${inboxId} | Msg: ${incomingMsg}`);
 
   // Simpan data terakhir untuk dilihat di Frontend
   global.lastWebhookData = {
       receivedAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
-      sender: body.sender || "Unknown",
-      message: body.message || "No Message Content",
+      sender: senderNumber || "Unknown",
+      message: incomingMsg || "No Message Content",
       rawBody: body,
-      contentType: contentType
+      contentType: contentType,
+      hasInboxId: !!inboxId
   };
-
-  // Logic Proses Pesan
-  // Fonnte kadang kirim 'message', kadang 'data.message' tergantung setting
-  const incomingMsg = body.message || (body.data ? body.data.message : null); 
-  const senderNumber = body.sender || (body.data ? body.data.sender : null);
 
   if (incomingMsg && senderNumber) {
       global.incomingMessageQueue.push({
+          id: inboxId, // Storing InboxID for future reply capability
           content: incomingMsg,
           sender: senderNumber,
           timestamp: Date.now()
       });
-      console.log(`✅ Pesan masuk antrian: ${incomingMsg}`);
+      console.log(`✅ Pesan masuk antrian`);
   } else {
-      console.log("⚠️ Webhook masuk tapi format tidak dikenali sebagai pesan chat.");
+      console.log("⚠️ Webhook masuk tapi format tidak dikenali.");
   }
 
+  // Fonnte expects 200 OK
   res.status(200).send('OK');
 });
 

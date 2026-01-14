@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity, Wifi, WifiOff, PlayCircle, Copy, ArrowUpRight, ArrowDownLeft, Radio } from 'lucide-react';
+import { Smartphone, LayoutDashboard, Users, ChevronDown, Link2, Link2Off, Phone, Activity, Wifi, WifiOff, PlayCircle, Copy, ArrowUpRight, ArrowDownLeft, Radio, Info } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -156,7 +156,8 @@ const App: React.FC = () => {
             body: JSON.stringify({
                 sender: '628999999999',
                 message: 'Halo, ini pesan test simulasi dari Dashboard!',
-                api_key: 'test-simulation' 
+                api_key: 'test-simulation',
+                id: 'SIMULATED_INBOX_ID_123'
             })
         });
         
@@ -281,13 +282,25 @@ const App: React.FC = () => {
                                 <ArrowDownLeft size={10} className={webhookStatus.lastTime ? "text-green-400" : "text-red-400"} />
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-200">Jalur Terima (Incoming)</span>
-                                    <span className="text-[8px] text-slate-400">Metode: Webhook (Pasif/Menunggu)</span>
+                                    <span className="text-[8px] text-slate-400">Metode: Webhook (Real-time)</span>
                                 </div>
                             </div>
                             <span className={`font-bold text-[9px] ${webhookStatus.lastTime ? 'text-green-300' : 'text-red-300'}`}>
                                 {webhookStatus.lastTime ? 'ACTIVE ✅' : 'WAITING ⏳'}
                             </span>
                         </div>
+                        
+                        {/* EDUKASI KENAPA WEBHOOK */}
+                        {!webhookStatus.lastTime && (
+                           <div className="mt-1 pt-1 border-t border-slate-600 text-[9px] text-slate-400 italic">
+                              <div className="flex gap-1">
+                                 <Info size={10} className="shrink-0 mt-0.5" />
+                                 <span>
+                                    Kenapa tidak pakai API Polling? Karena Webhook lebih cepat (real-time) dan tidak membebani server Fonnte.
+                                 </span>
+                              </div>
+                           </div>
+                        )}
 
                         {webhookStatus.lastTime && (
                            <div className="mt-1 pt-1 border-t border-slate-600">
@@ -299,7 +312,7 @@ const App: React.FC = () => {
                     
                     {/* VISUALISASI ALUR */}
                     <div className="w-full bg-black/20 p-2 rounded mt-1 border border-slate-700">
-                        <span className="text-[9px] text-slate-400 block mb-1 font-semibold text-center">ALUR DATA (MENGAPA PERLU WEBHOOK)</span>
+                        <span className="text-[9px] text-slate-400 block mb-1 font-semibold text-center">ALUR DATA (PUSH MECHANISM)</span>
                         <div className="flex items-center justify-between text-[10px] text-slate-300 font-mono">
                            <div className="flex flex-col items-center">
                               <span className="bg-green-800 px-1 rounded">WA</span>

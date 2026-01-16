@@ -1,23 +1,48 @@
 import React, { useState } from 'react';
 import { CustomerData } from '../types';
 import { InfoCard } from './InfoCard';
-import { API_BASE_URL } from '../constants';
-import { User, CreditCard, History, Activity, AlertTriangle, Smartphone, BrainCircuit, Send, CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { API_BASE_URL, CUSTOMERS } from '../constants';
+import { 
+    User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
+    BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
+    Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings
+} from 'lucide-react';
 
 interface CustomerPanelProps {
   data: CustomerData;
-  targetPhone: string; // Tambahkan prop targetPhone
+  targetPhone: string;
+  setTargetPhone: (val: string) => void;
+  isLiveSync: boolean;
+  setIsLiveSync: (val: boolean) => void;
+  webhookStatus: {lastTime: string | null, lastSender: string | null, rawBody?: any};
+  backendConnection: 'checking' | 'connected' | 'error';
+  simulating: boolean;
+  onSimulateWebhook: () => void;
+  onSwitchCustomer: (id: string) => void;
 }
 
-export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data, targetPhone }) => {
+export const CustomerPanel: React.FC<CustomerPanelProps> = ({ 
+    data, 
+    targetPhone, 
+    setTargetPhone,
+    isLiveSync,
+    setIsLiveSync,
+    webhookStatus,
+    backendConnection,
+    simulating,
+    onSimulateWebhook,
+    onSwitchCustomer
+}) => {
   const [sendingStatus, setSendingStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [showDebug, setShowDebug] = useState(false);
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false); // State untuk Buka/Tutup Panel - Default Hidden
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
 
-  // Logic untuk memanggil Backend Node.js
   const handleSendReminder = async () => {
     setSendingStatus('sending');
     setErrorMessage('');
@@ -32,7 +57,6 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data, targetPhone 
         },
         body: JSON.stringify({
           customerId: data.id,
-          // Mengirim nomor HP target dinamis dari input UI
           target: targetPhone, 
           message: `Halo Bapak/Ibu, kami dari BPJS Kesehatan. Mengingatkan total tunggakan Anda sebesar ${formatCurrency(data.billing_info.total_tunggakan)}. Mohon segera diselesaikan.`
         }),
@@ -54,208 +78,324 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({ data, targetPhone 
     }
   };
 
-  // Safe accessor for payment promise status
   const lastPromise = data.payment_commitment_history.last_promise || data.payment_commitment_history.promises?.[0];
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4 bg-slate-50 scrollbar-thin scrollbar-thumb-slate-300">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">RICH <span className="text-bpjs-primary">Dashboard</span></h1>
-          <p className="text-xs text-slate-500">Case ID: {data.id.slice(-8)}...</p>
+    <div className="h-full flex flex-col bg-slate-50 border-r border-slate-200">
+      
+      {/* HEADER & CONTROLS */}
+      <div className="p-4 border-b border-slate-200 bg-white z-10 shadow-sm transition-all duration-300">
+        <div className="flex items-center justify-between mb-2">
+            <h1 className="text-xl font-bold text-slate-800">
+                RICH <span className="text-bpjs-primary">Dashboard</span>
+            </h1>
+            <button 
+                onClick={() => setIsControlPanelOpen(!isControlPanelOpen)}
+                className={`p-1.5 rounded-full transition-colors border ${isControlPanelOpen ? 'bg-slate-200 border-slate-300 text-slate-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                title={isControlPanelOpen ? "Tutup Panel Kontrol" : "Buka Panel Kontrol"}
+            >
+                {isControlPanelOpen ? <ChevronUp size={16} /> : <Settings size={16} />}
+            </button>
         </div>
-        <div className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
-          <AlertTriangle size={12} />
-          Overdue
-        </div>
-      </div>
 
-      {/* Action Button - CONNECTED TO BACKEND */}
-      <div className="mb-4">
-        <button 
-          onClick={handleSendReminder}
-          disabled={sendingStatus === 'sending' || sendingStatus === 'success'}
-          className={`w-full py-2.5 rounded-lg shadow-sm font-medium text-sm flex items-center justify-center gap-2 transition-all
-            ${sendingStatus === 'success' 
-              ? 'bg-green-600 text-white' 
-              : sendingStatus === 'error'
-              ? 'bg-red-600 text-white'
-              : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-        >
-          {sendingStatus === 'idle' && (
-            <>
-              <Send size={16} />
-              Kirim WA ke {targetPhone}
-            </>
-          )}
-          {sendingStatus === 'sending' && (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Mengirim...
-            </>
-          )}
-          {sendingStatus === 'success' && (
-            <>
-              <CheckCircle size={16} />
-              Terkirim!
-            </>
-          )}
-          {sendingStatus === 'error' && (
-             <>
-              <XCircle size={16} />
-              Gagal Kirim
-             </>
-          )}
-        </button>
-        
-        {sendingStatus === 'error' && errorMessage && (
-          <div className="mt-2 text-[10px] text-red-600 bg-red-50 p-2 rounded border border-red-200 break-words leading-tight">
-             <strong>Error:</strong> {errorMessage}
-             <br/>
-             <span className="opacity-75 italic mt-1 block">Pastikan Token Fonnte valid & Device Connected.</span>
-          </div>
-        )}
-        
-        {sendingStatus !== 'error' && (
-          <p className="text-[10px] text-center text-slate-400 mt-1">
-             Target: {targetPhone} (Set di Toolbar Atas)
-          </p>
-        )}
-      </div>
-
-      {/* Profile Card */}
-      <InfoCard title="Profil Peserta" icon={<User size={14} />}>
-        <div className="grid grid-cols-2 gap-y-2 text-sm">
-          <div className="text-slate-500">No. Kartu</div>
-          <div className="font-medium text-slate-800">{data.peserta_profile.nokapst_masked}</div>
-          
-          <div className="text-slate-500">Status</div>
-          <div className="font-medium text-slate-800">{data.peserta_profile.status_kepesertaan} (Kelas {data.peserta_profile.kelas_rawat})</div>
-          
-          <div className="text-slate-500">Tanggungan</div>
-          <div className="font-medium text-slate-800">{data.peserta_profile.jumlah_tanggungan} Jiwa</div>
-          
-          {data.peserta_profile.pekerjaan && (
-            <>
-              <div className="text-slate-500">Pekerjaan</div>
-              <div className="font-medium text-slate-800">{data.peserta_profile.pekerjaan}</div>
-            </>
-          )}
-          
-          <div className="text-slate-500">Gender/Usia</div>
-          <div className="font-medium text-slate-800">{data.peserta_profile.gender} / {data.peserta_profile.usia} th</div>
-        </div>
-      </InfoCard>
-
-      {/* Behavioral Segment (New Feature) */}
-      {data.behavioral_segment && (
-        <InfoCard title="Behavioral Insight" icon={<BrainCircuit size={14} />} className="border-purple-200 bg-purple-50/30">
-           <div className="text-sm">
-              <div className="flex justify-between mb-1">
-                <span className="text-slate-500">Persona</span>
-                <span className="font-bold text-purple-700">{data.behavioral_segment.persona}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                 <span className="text-slate-500">Gaya Komunikasi</span>
-                 <span className="text-slate-800">{data.behavioral_segment.communication_style}</span>
-              </div>
-              <div className="mt-2 pt-2 border-t border-purple-100">
-                <span className="text-xs text-slate-500 block mb-1">Pain Points:</span>
-                <div className="flex flex-wrap gap-1">
-                   {data.behavioral_segment.pain_points.map((p, i) => (
-                      <span key={i} className="text-[10px] bg-white border border-purple-100 px-1.5 py-0.5 rounded text-purple-600">{p}</span>
-                   ))}
+        {/* Control Box (Collapsible) */}
+        {isControlPanelOpen && (
+            <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-300 origin-top">
+                
+                {/* Customer Selector */}
+                <div className="relative group">
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Data Peserta</div>
+                    <div className="relative">
+                        <select 
+                            className="w-full appearance-none bg-white border border-slate-300 text-slate-700 text-xs rounded-md px-3 py-2 pr-8 focus:outline-none focus:ring-1 focus:ring-bpjs-primary font-medium"
+                            value={data.id}
+                            onChange={(e) => onSwitchCustomer(e.target.value)}
+                        >
+                            {CUSTOMERS.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.peserta_profile.gender === 'L' ? 'Bpk' : 'Ibu'} {c.peserta_profile.status_kepesertaan} - Rp{c.billing_info.total_tunggakan.toLocaleString('id-ID')}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
+                    </div>
                 </div>
-              </div>
-           </div>
-        </InfoCard>
-      )}
 
-      {/* Billing Alert */}
-      <InfoCard title="Billing Status" icon={<CreditCard size={14} />} className="border-red-200 bg-red-50/50">
-        <div className="flex justify-between items-end mb-2">
-          <div className="text-slate-600 text-sm">Total Tunggakan</div>
-          <div className="text-xl font-bold text-red-600">{formatCurrency(data.billing_info.total_tunggakan)}</div>
-        </div>
-        <div className="text-xs text-slate-500 flex justify-between border-t border-red-100 pt-2">
-          <span>Periode: {data.billing_info.bulan_menunggak.length} Bulan</span>
-          <span>Last Pay: {data.billing_info.last_payment_date}</span>
-        </div>
-      </InfoCard>
+                {/* Target Phone */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Nomor WhatsApp Tujuan</div>
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                        <Phone size={14} className="text-slate-400" />
+                        <input 
+                            type="text" 
+                            value={targetPhone}
+                            onChange={(e) => setTargetPhone(e.target.value)}
+                            className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                            placeholder="0812..."
+                        />
+                    </div>
+                </div>
 
-      {/* Strategy Badge */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-        <div className="text-xs font-bold text-blue-700 mb-1 flex items-center gap-1">
-          <Activity size={12} />
-          RECOMMENDED STRATEGY
-        </div>
-        <p className="text-sm text-blue-900 font-medium">{data.strategy.approach}</p>
-        <p className="text-xs text-blue-600 mt-1">{data.strategy.tone} • {data.strategy.urgency}</p>
+                {/* Connect Toggle */}
+                <div>
+                    <button 
+                        onClick={() => setIsLiveSync(!isLiveSync)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-md border text-xs font-bold transition-all
+                        ${isLiveSync 
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                            : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-100'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
+                            {isLiveSync ? 'META API: CONNECTED' : 'OFFLINE MODE'}
+                        </div>
+                        <div className={`w-2 h-2 rounded-full ${isLiveSync ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                    </button>
+                    
+                    {/* Debug Info Mini / Expandable */}
+                    {isLiveSync && (
+                        <div className="mt-2">
+                            <button 
+                                onClick={() => setShowDebug(!showDebug)}
+                                className="w-full text-[10px] text-blue-600 flex items-center justify-center gap-1 hover:underline mb-1"
+                            >
+                            {showDebug ? 'Sembunyikan Detail Koneksi' : 'Lihat Detail Koneksi & Webhook'}
+                            </button>
+
+                            {showDebug && (
+                                <div className="bg-slate-800 text-white p-3 rounded-md text-[10px] space-y-3 animate-in fade-in slide-in-from-top-2">
+                                    {/* Config Info */}
+                                    <div className="space-y-1 pb-2 border-b border-slate-600">
+                                        <div className="flex items-center gap-1 text-slate-400">
+                                            <ShieldCheck size={10} /> <span>Callback URL:</span>
+                                        </div>
+                                        <div className="flex bg-black/30 p-1 rounded gap-1">
+                                            <code className="flex-1 truncate text-green-300">{API_BASE_URL}/webhook</code>
+                                            <Copy size={10} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${API_BASE_URL}/webhook`)}/>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-slate-400 pt-1">
+                                            <span>Verify Token:</span> <code className="text-yellow-300">rich_secret_token</code>
+                                        </div>
+                                    </div>
+
+                                    {/* Status Connection */}
+                                    <div className="flex items-center justify-between">
+                                        <span>Backend:</span>
+                                        <span className={backendConnection === 'connected' ? 'text-green-400' : 'text-red-400'}>
+                                            {backendConnection === 'connected' ? 'ONLINE' : 'OFFLINE'}
+                                        </span>
+                                    </div>
+
+                                    {/* Webhook Status */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span>Incoming Msg:</span>
+                                            <span className={webhookStatus.lastTime ? 'text-green-400' : 'text-yellow-400'}>
+                                                {webhookStatus.lastTime ? 'RECEIVED' : 'WAITING'}
+                                            </span>
+                                        </div>
+                                        {webhookStatus.lastTime ? (
+                                            <div className="bg-black/30 p-1 rounded text-slate-300">
+                                                <div>From: {webhookStatus.lastSender}</div>
+                                                <div className="text-[9px] opacity-70">{webhookStatus.lastTime}</div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-slate-500 italic">Belum ada pesan masuk.</div>
+                                        )}
+                                    </div>
+
+                                    {/* Simulation Button */}
+                                    <button 
+                                        onClick={onSimulateWebhook}
+                                        disabled={simulating}
+                                        className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 py-1.5 rounded flex items-center justify-center gap-1 text-white disabled:opacity-50"
+                                    >
+                                        <PlayCircle size={10} /> Test Webhook
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
       </div>
 
-      {/* Commitment History */}
-      <InfoCard title="Riwayat Komitmen" icon={<History size={14} />}>
-        <div className="flex items-center justify-between mb-3">
-           <span className="text-sm text-slate-600">Credibility Score</span>
-           <div className="w-24 bg-slate-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full ${data.payment_commitment_history.credibility_score < 0.5 ? 'bg-red-500' : 'bg-yellow-500'}`} 
-                style={{ width: `${data.payment_commitment_history.credibility_score * 100}%` }}
-              ></div>
-           </div>
+      {/* SCROLLABLE CONTENT */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-300">
+        
+        {/* Action Button */}
+        <div>
+            <button 
+            onClick={handleSendReminder}
+            disabled={sendingStatus === 'sending' || sendingStatus === 'success'}
+            className={`w-full py-2.5 rounded-lg shadow-sm font-medium text-sm flex items-center justify-center gap-2 transition-all
+                ${sendingStatus === 'success' 
+                ? 'bg-green-600 text-white' 
+                : sendingStatus === 'error'
+                ? 'bg-red-600 text-white'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+                }`}
+            >
+            {sendingStatus === 'idle' && (
+                <>
+                <Send size={16} />
+                Kirim Template WA
+                </>
+            )}
+            {sendingStatus === 'sending' && (
+                <>
+                <Loader2 size={16} className="animate-spin" />
+                Mengirim...
+                </>
+            )}
+            {sendingStatus === 'success' && (
+                <>
+                <CheckCircle size={16} />
+                Terkirim!
+                </>
+            )}
+            {sendingStatus === 'error' && (
+                <>
+                <XCircle size={16} />
+                Gagal Kirim
+                </>
+            )}
+            </button>
+            
+            {sendingStatus === 'error' && errorMessage && (
+            <div className="mt-2 text-[10px] text-red-600 bg-red-50 p-2 rounded border border-red-200 break-words leading-tight">
+                <strong>Error:</strong> {errorMessage}
+            </div>
+            )}
         </div>
-        {lastPromise && (
-          <div className="bg-slate-100 p-2 rounded text-xs">
-            <div className="flex justify-between font-semibold text-slate-700">
-              <span>Janji Terakhir</span>
-              <span className="text-red-500 uppercase">{lastPromise.status}</span>
+
+        {/* Profile Card */}
+        <InfoCard title="Profil Peserta" icon={<User size={14} />}>
+            <div className="grid grid-cols-2 gap-y-2 text-sm">
+            <div className="text-slate-500">No. Kartu</div>
+            <div className="font-medium text-slate-800">{data.peserta_profile.nokapst_masked}</div>
+            
+            <div className="text-slate-500">Status</div>
+            <div className="font-medium text-slate-800">{data.peserta_profile.status_kepesertaan} (Kelas {data.peserta_profile.kelas_rawat})</div>
+            
+            <div className="text-slate-500">Tanggungan</div>
+            <div className="font-medium text-slate-800">{data.peserta_profile.jumlah_tanggungan} Jiwa</div>
+            
+            <div className="text-slate-500">Gender/Usia</div>
+            <div className="font-medium text-slate-800">{data.peserta_profile.gender} / {data.peserta_profile.usia} th</div>
             </div>
-            <div className="flex justify-between mt-1 text-slate-500">
-              <span>{lastPromise.promised_date}</span>
-              <span>{lastPromise.days_overdue} hari lewat</span>
+        </InfoCard>
+
+        {/* Behavioral Segment */}
+        {data.behavioral_segment && (
+            <InfoCard title="Behavioral Insight" icon={<BrainCircuit size={14} />} className="border-purple-200 bg-purple-50/30">
+            <div className="text-sm">
+                <div className="flex justify-between mb-1">
+                    <span className="text-slate-500">Persona</span>
+                    <span className="font-bold text-purple-700">{data.behavioral_segment.persona}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                    <span className="text-slate-500">Gaya Komunikasi</span>
+                    <span className="text-slate-800">{data.behavioral_segment.communication_style}</span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-purple-100">
+                    <span className="text-xs text-slate-500 block mb-1">Pain Points:</span>
+                    <div className="flex flex-wrap gap-1">
+                    {data.behavioral_segment.pain_points.map((p, i) => (
+                        <span key={i} className="text-[10px] bg-white border border-purple-100 px-1.5 py-0.5 rounded text-purple-600">{p}</span>
+                    ))}
+                    </div>
+                </div>
             </div>
-          </div>
+            </InfoCard>
         )}
-      </InfoCard>
 
-      {/* Claim History - THE TRIGGER */}
-      <InfoCard title="Data Klaim (Leverage)" icon={<Activity size={14} />} className="border-emerald-200 bg-emerald-50/30">
-        <div className="space-y-2">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="text-sm font-bold text-emerald-800">{data.claim_history.last_claim.hospital}</div>
-              <div className="text-xs text-emerald-600">{data.claim_history.last_claim.diagnosis} • {data.claim_history.last_claim.type}</div>
+        {/* Billing Alert */}
+        <InfoCard title="Billing Status" icon={<CreditCard size={14} />} className="border-red-200 bg-red-50/50">
+            <div className="flex justify-between items-end mb-2">
+            <div className="text-slate-600 text-sm">Total Tunggakan</div>
+            <div className="text-xl font-bold text-red-600">{formatCurrency(data.billing_info.total_tunggakan)}</div>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-bold text-emerald-700">{formatCurrency(data.claim_history.last_claim.claim_amount)}</div>
-              <div className="text-[10px] text-emerald-500">{data.claim_history.last_claim.date}</div>
+            <div className="text-xs text-slate-500 flex justify-between border-t border-red-100 pt-2">
+            <span>Periode: {data.billing_info.bulan_menunggak.length} Bulan</span>
+            <span>Last Pay: {data.billing_info.last_payment_date}</span>
             </div>
-          </div>
-        </div>
-      </InfoCard>
+        </InfoCard>
 
-       {/* Interaction History */}
-       <InfoCard title="Kontak Terakhir" icon={<Smartphone size={14} />}>
-        <div className="text-xs space-y-1">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Agent</span>
-            <span className="font-medium">{data.interaction_history.last_contact.agent_name}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Tanggal</span>
-            <span className="font-medium">{data.interaction_history.last_contact.date}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Hasil</span>
-            <span className="font-medium text-orange-600">{data.interaction_history.last_contact.outcome}</span>
-          </div>
-           <div className="mt-2 pt-2 border-t border-slate-100 text-slate-600 italic">
-            "{data.interaction_history.last_contact.alasan_tunggak}"
-          </div>
+        {/* Strategy Badge */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="text-xs font-bold text-blue-700 mb-1 flex items-center gap-1">
+            <Activity size={12} />
+            RECOMMENDED STRATEGY
+            </div>
+            <p className="text-sm text-blue-900 font-medium">{data.strategy.approach}</p>
+            <p className="text-xs text-blue-600 mt-1">{data.strategy.tone} • {data.strategy.urgency}</p>
         </div>
-      </InfoCard>
 
+        {/* Commitment History */}
+        <InfoCard title="Riwayat Komitmen" icon={<History size={14} />}>
+            <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-slate-600">Credibility Score</span>
+            <div className="w-24 bg-slate-200 rounded-full h-2">
+                <div 
+                    className={`h-2 rounded-full ${data.payment_commitment_history.credibility_score < 0.5 ? 'bg-red-500' : 'bg-yellow-500'}`} 
+                    style={{ width: `${data.payment_commitment_history.credibility_score * 100}%` }}
+                ></div>
+            </div>
+            </div>
+            {lastPromise && (
+            <div className="bg-slate-100 p-2 rounded text-xs">
+                <div className="flex justify-between font-semibold text-slate-700">
+                <span>Janji Terakhir</span>
+                <span className="text-red-500 uppercase">{lastPromise.status}</span>
+                </div>
+                <div className="flex justify-between mt-1 text-slate-500">
+                <span>{lastPromise.promised_date}</span>
+                <span>{lastPromise.days_overdue} hari lewat</span>
+                </div>
+            </div>
+            )}
+        </InfoCard>
+
+        {/* Claim History - THE TRIGGER */}
+        <InfoCard title="Data Klaim (Leverage)" icon={<Activity size={14} />} className="border-emerald-200 bg-emerald-50/30">
+            <div className="space-y-2">
+            <div className="flex justify-between items-start">
+                <div>
+                <div className="text-sm font-bold text-emerald-800">{data.claim_history.last_claim.hospital}</div>
+                <div className="text-xs text-emerald-600">{data.claim_history.last_claim.diagnosis} • {data.claim_history.last_claim.type}</div>
+                </div>
+                <div className="text-right">
+                <div className="text-sm font-bold text-emerald-700">{formatCurrency(data.claim_history.last_claim.claim_amount)}</div>
+                <div className="text-[10px] text-emerald-500">{data.claim_history.last_claim.date}</div>
+                </div>
+            </div>
+            </div>
+        </InfoCard>
+
+        {/* Interaction History */}
+        <InfoCard title="Kontak Terakhir" icon={<Smartphone size={14} />}>
+            <div className="text-xs space-y-1">
+            <div className="flex justify-between">
+                <span className="text-slate-500">Agent</span>
+                <span className="font-medium">{data.interaction_history.last_contact.agent_name}</span>
+            </div>
+            <div className="flex justify-between">
+                <span className="text-slate-500">Tanggal</span>
+                <span className="font-medium">{data.interaction_history.last_contact.date}</span>
+            </div>
+            <div className="flex justify-between">
+                <span className="text-slate-500">Hasil</span>
+                <span className="font-medium text-orange-600">{data.interaction_history.last_contact.outcome}</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-slate-100 text-slate-600 italic">
+                "{data.interaction_history.last_contact.alasan_tunggak}"
+            </div>
+            </div>
+        </InfoCard>
+
+      </div>
     </div>
   );
 };

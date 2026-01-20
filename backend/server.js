@@ -5,14 +5,13 @@ const cors = require('cors');
 const axios = require('axios');
 
 const app = express();
-// Railway akan otomatis meng-inject process.env.PORT
-// Jika di local, fallback ke 3001
 const port = process.env.PORT || 3001;
 
 // ==========================================
-// KONFIGURASI TELEGRAM BOT API
+// KONFIGURASI WHATSAPP CLOUD API
 // ==========================================
-const ENV_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
+// Token Verifikasi Webhook (Anda buat sendiri, masukkan ini di Dashboard Meta)
+const VERIFY_TOKEN = "rich-ai-verify-token"; 
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -26,18 +25,17 @@ global.lastWebhookData = {
     sender: null,
     message: null,
     rawBody: null,
-    status: 'Waiting...'
+    status: 'Waiting for WhatsApp...'
 };
 
 // ==========================================
-// ROOT HEALTH CHECK (Penting untuk Railway)
+// ROOT HEALTH CHECK
 // ==========================================
 app.get('/', (req, res) => {
-  console.log("Health check ping received");
   res.json({ 
     status: 'Rich Backend Online 🟢', 
     platform: process.env.RAILWAY_STATIC_URL ? 'Railway' : 'Localhost',
-    mode: 'Telegram Bot API',
+    mode: 'WhatsApp Cloud API',
     port: port,
     time: new Date().toISOString() 
   });
@@ -51,109 +49,102 @@ app.get('/api/debug', (req, res) => {
 });
 
 // ==========================================
-// 1. API: VERIFY TOKEN (CHECK BOT STATUS)
+// 1. API: VERIFY CREDENTIALS (CHECK TOKEN)
 // ==========================================
 app.post('/api/verify-token', async (req, res) => {
-    const { token } = req.body;
-    const botToken = token || ENV_BOT_TOKEN;
+    let { token, phoneId } = req.body;
 
-    if (!botToken) {
-        return res.status(400).json({ success: false, error: "Token not provided" });
+    if (!token || !phoneId) {
+        return res.status(400).json({ success: false, error: "Token or Phone ID missing" });
     }
 
     try {
-        // Panggil getMe untuk cek validitas token
-        const response = await axios.get(`https://api.telegram.org/bot${botToken}/getMe`);
-        res.json({ success: true, bot: response.data.result });
+        // Cek validitas dengan mengambil info nomor telepon
+        const url = `https://graph.facebook.com/v22.0/${phoneId}`;
+        const response = await axios.get(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.data && response.data.verified_name) {
+             res.json({ success: true, data: response.data });
+        } else {
+             // Kadang return sukses tapi field beda, anggap sukses jika 200 OK
+             res.json({ success: true, data: response.data });
+        }
     } catch (error) {
-        console.error("Verify Token Error:", error.message);
+        console.error("Verify WA Token Error:", error.message);
+        const errorData = error.response ? error.response.data : error.message;
+        
         res.status(400).json({ 
             success: false, 
-            error: "Token Invalid atau Koneksi ke Telegram Gagal", 
-            details: error.response ? error.response.data : error.message 
+            error: "Gagal verifikasi Token/Phone ID.", 
+            details: errorData 
         });
     }
 });
 
 // ==========================================
-// 2. API: SETUP WEBHOOK (HELPER)
-// ==========================================
-app.post('/api/setup-webhook', async (req, res) => {
-    const { token, url } = req.body;
-    const botToken = token || ENV_BOT_TOKEN;
-
-    if (!botToken) {
-        return res.status(400).json({ success: false, error: "Token not provided" });
-    }
-    if (!url) {
-        return res.status(400).json({ success: false, error: "Webhook URL not provided" });
-    }
-
-    // Validasi URL: Telegram butuh HTTPS public URL (bukan localhost)
-    if (url.includes('localhost') || url.includes('127.0.0.1')) {
-        return res.status(400).json({ 
-            success: false, 
-            error: "Invalid Webhook URL", 
-            details: "Telegram tidak bisa mengirim ke localhost. Gunakan URL Railway (https://...)" 
-        });
-    }
-
-    try {
-        const apiUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=${url}`;
-        const response = await axios.get(apiUrl);
-        res.json({ success: true, telegram_response: response.data });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            error: "Failed to set webhook", 
-            details: error.response ? error.response.data : error.message 
-        });
-    }
-});
-
-// ==========================================
-// 3. API: KIRIM PESAN (OUTGOING) - VIA TELEGRAM
+// 2. API: KIRIM PESAN (OUTGOING) - VIA WHATSAPP
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
-    let { customerId, message, target, token } = req.body;
-    
-    const botToken = token || ENV_BOT_TOKEN;
+    let { message, target, token, phoneId, isTemplate } = req.body;
 
-    if (!botToken) {
-        return res.status(400).json({ success: false, error: "Telegram Bot Token missing" });
-    }
-    
-    if (!target) {
-        return res.status(400).json({ success: false, error: "Target Chat ID missing" });
+    if (!token || !phoneId || !target) {
+        return res.status(400).json({ success: false, error: "Credentials missing (Token, PhoneID, or Target)" });
     }
 
-    console.log(`[OUTGOING TELEGRAM] To: ${target} | Msg: ${message}`);
-    
+    // Graph API URL
+    const url = `https://graph.facebook.com/v22.0/${phoneId}/messages`;
+
+    // Payload Default (Text)
+    let payload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: target,
+        type: "text",
+        text: { preview_url: false, body: message }
+    };
+
+    // Payload Template (Jika diminta, misal untuk pesan pertama)
+    // Menggunakan template 'hello_world' yang default ada di semua akun sandbox/live Meta
+    if (isTemplate) {
+        payload = {
+            messaging_product: "whatsapp",
+            to: target,
+            type: "template",
+            template: {
+                name: "hello_world", // Template default Meta
+                language: { code: "en_US" }
+            }
+        };
+        console.log(`[OUTGOING WA] Sending Template hello_world to ${target}`);
+    } else {
+        console.log(`[OUTGOING WA] Sending Text to ${target}: ${message}`);
+    }
+
     try {
-        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-        
-        const response = await axios.post(url, {
-            chat_id: target,
-            text: message,
-            parse_mode: 'Markdown' 
+        const response = await axios.post(url, payload, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
         });
-
         res.json({ success: true, detail: response.data });
 
     } catch (error) {
-        const telError = error.response ? error.response.data : error.message;
-        console.error(`[TELEGRAM FAILED]`, JSON.stringify(telError, null, 2));
+        const waError = error.response ? error.response.data : error.message;
+        console.error(`[WA SEND FAILED]`, JSON.stringify(waError, null, 2));
         
         res.status(500).json({ 
             success: false, 
-            error: "Gagal kirim ke Telegram (Cek Chat ID / Token).",
-            details: telError 
+            error: "Gagal kirim ke WhatsApp.",
+            details: waError 
         });
     }
 });
 
 // ==========================================
-// 4. API: POLLING PESAN (INCOMING QUEUE)
+// 3. API: POLLING PESAN (INCOMING QUEUE)
 // ==========================================
 app.get('/api/poll-incoming', (req, res) => {
     if (global.incomingMessageQueue.length > 0) {
@@ -166,40 +157,71 @@ app.get('/api/poll-incoming', (req, res) => {
 });
 
 // ==========================================
-// 5. WEBHOOK EVENT (POST) - MENERIMA PESAN TELEGRAM
+// 4. WEBHOOK (GET) - VERIFIKASI META
+// ==========================================
+// Meta akan memanggil ini saat Anda memasukkan Callback URL di Dashboard
+app.get('/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('WEBHOOK_VERIFIED');
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  } else {
+      res.sendStatus(400);
+  }
+});
+
+// ==========================================
+// 5. WEBHOOK (POST) - MENERIMA PESAN WA
 // ==========================================
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  if (body.message && body.message.text) {
-      const chatId = body.message.chat.id; // Sender ID
-      const messageBody = body.message.text; // Isi pesan
-      const msgId = body.message.message_id;
-      const senderName = body.message.from.first_name || body.message.from.username;
+  // Cek apakah ini event dari WhatsApp
+  if (body.object) {
+    if (
+      body.entry &&
+      body.entry[0].changes &&
+      body.entry[0].changes[0].value.messages &&
+      body.entry[0].changes[0].value.messages[0]
+    ) {
+      const msgObj = body.entry[0].changes[0].value.messages[0];
+      const phoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
+      const from = msgObj.from; 
+      const msgBody = msgObj.text ? msgObj.text.body : "[Non-text message]";
+      const msgId = msgObj.id;
+      const name = body.entry[0].changes[0].value.contacts[0].profile.name;
 
-      console.log(`[INCOMING TELEGRAM] From: ${chatId} (${senderName}) | Msg: ${messageBody}`);
-      
+      console.log(`[INCOMING WA] From: ${from} (${name}) | Msg: ${msgBody}`);
+
+      // Simpan data untuk Debug
       global.lastWebhookData = {
           receivedAt: new Date().toLocaleString('id-ID'),
-          sender: chatId.toString(),
-          message: messageBody,
+          sender: from,
+          message: msgBody,
           rawBody: body
       };
 
+      // Masukkan ke Queue untuk dipoll oleh Frontend
       global.incomingMessageQueue.push({
           id: msgId,
-          content: messageBody,
-          sender: chatId.toString(),
+          content: msgBody,
+          sender: from,
           timestamp: Date.now()
       });
-      
-      res.sendStatus(200);
+    }
+    res.sendStatus(200);
   } else {
-      console.log("Non-text message received from Telegram");
-      res.sendStatus(200); 
+    res.sendStatus(404);
   }
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Server Telegram Bot berjalan di port ${port}`);
+  console.log(`🚀 Server WhatsApp Gateway berjalan di port ${port}`);
 });

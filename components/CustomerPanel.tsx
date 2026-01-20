@@ -6,15 +6,17 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash
 } from 'lucide-react';
 
 interface CustomerPanelProps {
   data: CustomerData;
   targetPhone: string;
   setTargetPhone: (val: string) => void;
-  telegramToken: string;
-  setTelegramToken: (val: string) => void;
+  whatsappToken: string;
+  setWhatsappToken: (val: string) => void;
+  phoneId: string;
+  setPhoneId: (val: string) => void;
   isLiveSync: boolean;
   setIsLiveSync: (val: boolean) => void;
   webhookStatus: {lastTime: string | null, lastSender: string | null, rawBody?: any};
@@ -28,8 +30,10 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     data, 
     targetPhone, 
     setTargetPhone,
-    telegramToken,
-    setTelegramToken,
+    whatsappToken,
+    setWhatsappToken,
+    phoneId,
+    setPhoneId,
     isLiveSync,
     setIsLiveSync,
     webhookStatus,
@@ -48,39 +52,45 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
   };
 
-  const handleVerifyToken = async () => {
-    if (!telegramToken) {
-        alert("Mohon isi Bot Token terlebih dahulu!");
+  const handleVerifyCredentials = async () => {
+    const cleanToken = whatsappToken.trim();
+    const cleanPhoneId = phoneId.trim();
+
+    if (!cleanToken || !cleanPhoneId) {
+        alert("Mohon isi Access Token dan Phone Number ID!");
         return;
     }
+    
     setTokenStatus('idle');
+    
     try {
         const res = await fetch(`${API_BASE_URL}/api/verify-token`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ token: telegramToken })
+            body: JSON.stringify({ token: cleanToken, phoneId: cleanPhoneId })
         });
         const json = await res.json();
         if (json.success) {
             setTokenStatus('valid');
-            alert(`✅ Token Valid!\nBot Name: ${json.bot.first_name}\nUsername: @${json.bot.username}`);
+            alert(`✅ Credentials Valid!\n\nVerified Name: ${json.data.verified_name || 'WhatsApp Business Account'}\nID: ${json.data.id}`);
         } else {
             setTokenStatus('invalid');
-            alert(`❌ Token Invalid!\nError: ${json.error}\nDetails: ${JSON.stringify(json.details)}`);
+            alert(`❌ Invalid!\n\nError: ${json.error}\nDetail: ${JSON.stringify(json.details)}`);
         }
     } catch (e: any) {
         setTokenStatus('invalid');
-        alert("❌ Gagal menghubungi backend.\n\nPastikan Anda telah menjalankan server backend dengan perintah:\n'npm run start-backend'\n\nDan pastikan server berjalan di Port 3001.");
+        alert("❌ Gagal menghubungi backend.\nPastikan server backend running.");
     }
   };
 
-  const handleSendReminder = async () => {
+  const handleSendTemplate = async () => {
     setSendingStatus('sending');
     setErrorMessage('');
     
     try {
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
       
+      // Kirim Template 'hello_world' sebagai test
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
@@ -89,8 +99,10 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         body: JSON.stringify({
           customerId: data.id,
           target: targetPhone,
-          token: telegramToken, 
-          message: `Halo Bapak/Ibu, kami dari BPJS Kesehatan. Mengingatkan total tunggakan Anda sebesar ${formatCurrency(data.billing_info.total_tunggakan)}. Mohon segera diselesaikan.`
+          token: whatsappToken.trim(),
+          phoneId: phoneId.trim(),
+          isTemplate: true, // Flag untuk kirim template
+          message: "hello_world" // Nama template default
         }),
       });
 
@@ -101,40 +113,13 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         setTimeout(() => setSendingStatus('idle'), 3000);
       } else {
         setSendingStatus('error');
-        // Tampilkan detail error dari Telegram jika ada (misal: Bad Request: chat not found)
-        const detailMsg = json.details ? ` (${json.details.description || JSON.stringify(json.details)})` : '';
-        setErrorMessage((json.error || 'Gagal mengirim pesan.') + detailMsg);
+        const detailMsg = json.details ? ` (${JSON.stringify(json.details)})` : '';
+        setErrorMessage((json.error || 'Gagal kirim.') + detailMsg);
       }
     } catch (error: any) {
       console.error("Gagal menghubungi backend:", error);
       setSendingStatus('error');
-      setErrorMessage("Network Error: Pastikan backend berjalan di port 3001. " + (error.message || ''));
-    }
-  };
-
-  const handleSetupWebhook = async () => {
-    if (!telegramToken) {
-        alert("Mohon isi Bot Token terlebih dahulu!");
-        return;
-    }
-    try {
-        const webhookUrl = `${API_BASE_URL}/webhook`;
-        const response = await fetch(`${API_BASE_URL}/api/setup-webhook`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                token: telegramToken,
-                url: webhookUrl
-            })
-        });
-        const json = await response.json();
-        if (json.success) {
-            alert(`Webhook Berhasil Diset ke: ${webhookUrl}\n\nResponse Telegram: ${JSON.stringify(json.telegram_response)}`);
-        } else {
-            alert(`Gagal set webhook: ${json.error}\nDetail: ${JSON.stringify(json.details)}`);
-        }
-    } catch (e) {
-        alert("❌ Gagal menghubungi backend.\nPastikan server backend running di Port 3001.");
+      setErrorMessage("Network Error: " + (error.message || 'Check connection'));
     }
   };
 
@@ -181,23 +166,40 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     </div>
                 </div>
 
-                {/* Bot Token Input */}
+                {/* WhatsApp Token Input */}
                 <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Bot Token (Dari @BotFather)</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Meta Access Token</div>
                     <div className="flex gap-1">
                         <div className="flex-1 flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
                             <Key size={14} className="text-slate-400" />
                             <input 
-                                type="text" 
-                                value={telegramToken}
-                                onChange={(e) => setTelegramToken(e.target.value)}
+                                type="password" 
+                                value={whatsappToken}
+                                onChange={(e) => setWhatsappToken(e.target.value)}
                                 className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
-                                placeholder="123456:ABC-Def..."
+                                placeholder="EAA..."
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Phone ID Input */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Phone Number ID</div>
+                    <div className="flex gap-1">
+                        <div className="flex-1 flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                            <Hash size={14} className="text-slate-400" />
+                            <input 
+                                type="text" 
+                                value={phoneId}
+                                onChange={(e) => setPhoneId(e.target.value)}
+                                className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                                placeholder="Contoh: 1234567890"
                             />
                         </div>
                         <button 
-                            onClick={handleVerifyToken}
-                            title="Cek Validitas Token"
+                            onClick={handleVerifyCredentials}
+                            title="Cek Token & PhoneID"
                             className={`px-2 rounded-md border text-xs font-bold transition-colors ${tokenStatus === 'valid' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-300'}`}
                         >
                             {tokenStatus === 'valid' ? <Check size={14}/> : '?'}
@@ -205,24 +207,20 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     </div>
                 </div>
 
-                {/* Target Chat ID (Telegram) */}
+                {/* Target Phone Input */}
                 <div>
                     <div className="flex items-center justify-between mb-1 ml-1">
-                         <div className="text-[10px] uppercase font-bold text-slate-400">Target Chat ID</div>
-                         <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-[9px] text-blue-500 hover:underline">Cek ID di @userinfobot</a>
+                         <div className="text-[10px] uppercase font-bold text-slate-400">Target Phone (WA)</div>
                     </div>
                     <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
-                        <MessageSquare size={14} className="text-slate-400" />
+                        <Smartphone size={14} className="text-slate-400" />
                         <input 
                             type="text" 
                             value={targetPhone}
                             onChange={(e) => setTargetPhone(e.target.value)}
                             className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
-                            placeholder="Contoh: 123456789"
+                            placeholder="628123..."
                         />
-                    </div>
-                    <div className="text-[9px] text-slate-400 mt-0.5 ml-1 italic">
-                        *User harus chat bot dulu (Start)
                     </div>
                 </div>
 
@@ -232,12 +230,12 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                         onClick={() => setIsLiveSync(!isLiveSync)}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-md border text-xs font-bold transition-all
                         ${isLiveSync 
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' 
+                            ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
                             : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-100'}`}
                     >
                         <div className="flex items-center gap-2">
                             {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
-                            {isLiveSync ? 'TELEGRAM BOT: ON' : 'OFFLINE MODE'}
+                            {isLiveSync ? 'WHATSAPP BOT: ON' : 'OFFLINE MODE'}
                         </div>
                         <div className={`w-2 h-2 rounded-full ${isLiveSync ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
                     </button>
@@ -249,29 +247,29 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                 onClick={() => setShowDebug(!showDebug)}
                                 className="w-full text-[10px] text-blue-600 flex items-center justify-center gap-1 hover:underline mb-1"
                             >
-                            {showDebug ? 'Sembunyikan Detail Koneksi' : 'Lihat Detail Koneksi & Webhook'}
+                            {showDebug ? 'Sembunyikan Detail Webhook' : 'Lihat Detail Webhook'}
                             </button>
 
                             {showDebug && (
                                 <div className="bg-slate-800 text-white p-3 rounded-md text-[10px] space-y-3 animate-in fade-in slide-in-from-top-2">
                                     {/* Config Info */}
                                     <div className="space-y-1 pb-2 border-b border-slate-600">
+                                        <div className="font-bold text-green-400 mb-1">SETUP DI META DASHBOARD:</div>
+                                        
                                         <div className="flex items-center gap-1 text-slate-400">
                                             <ShieldCheck size={10} /> <span>Callback URL:</span>
                                         </div>
                                         <div className="flex bg-black/30 p-1 rounded gap-1">
-                                            <code className="flex-1 truncate text-green-300">{API_BASE_URL}/webhook</code>
+                                            <code className="flex-1 truncate text-white">{API_BASE_URL}/webhook</code>
                                             <Copy size={10} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${API_BASE_URL}/webhook`)}/>
                                         </div>
-                                        
-                                        {/* Setup Webhook Button */}
-                                        <div className="mt-2">
-                                            <button 
-                                                onClick={handleSetupWebhook}
-                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1 px-2 rounded text-[10px] font-bold"
-                                            >
-                                                Setup Webhook (Connect Telegram)
-                                            </button>
+
+                                        <div className="flex items-center gap-1 text-slate-400 mt-1">
+                                            <Key size={10} /> <span>Verify Token:</span>
+                                        </div>
+                                        <div className="flex bg-black/30 p-1 rounded gap-1">
+                                            <code className="flex-1 truncate text-white">rich-ai-verify-token</code>
+                                            <Copy size={10} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`rich-ai-verify-token`)}/>
                                         </div>
                                     </div>
 
@@ -324,7 +322,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         {/* Action Button */}
         <div>
             <button 
-            onClick={handleSendReminder}
+            onClick={handleSendTemplate}
             disabled={sendingStatus === 'sending' || sendingStatus === 'success'}
             className={`w-full py-2.5 rounded-lg shadow-sm font-medium text-sm flex items-center justify-center gap-2 transition-all
                 ${sendingStatus === 'success' 
@@ -337,7 +335,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
             {sendingStatus === 'idle' && (
                 <>
                 <Send size={16} />
-                Kirim Template Telegram
+                Kirim Template (Hello World)
                 </>
             )}
             {sendingStatus === 'sending' && (

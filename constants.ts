@@ -10,7 +10,7 @@ const LOCAL_BACKEND_URL = 'http://localhost:3001';
 // 1. Deploy folder backend ke Railway.
 // 2. Copy Public URL dari Railway (contoh: https://rich-backend-production.up.railway.app).
 // 3. Paste URL tersebut di bawah ini menggantikan string kosong.
-const LIVE_BACKEND_URL = ''; 
+const LIVE_BACKEND_URL = 'https://bpjsgenairich-production.up.railway.app'; 
 
 // Ganti variable ini ke LIVE_BACKEND_URL jika sudah deploy ke Railway
 // Agar Frontend (yang berjalan di local/Vercel) bisa menghubungi Backend di Railway

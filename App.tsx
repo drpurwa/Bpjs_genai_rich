@@ -4,7 +4,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { CUSTOMERS, API_BASE_URL } from './constants';
 import { Message, CustomerData } from './types';
 import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard } from 'lucide-react';
+import { Smartphone, LayoutDashboard, WifiOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
@@ -13,11 +13,15 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
   const [targetPhone, setTargetPhone] = useState(() => {
-    return localStorage.getItem('target_phone') || '123456789'; // Default ID dummy Telegram
+    return localStorage.getItem('target_phone') || '628...'; 
   });
 
-  const [telegramToken, setTelegramToken] = useState(() => {
-    return localStorage.getItem('telegram_bot_token') || '';
+  const [whatsappToken, setWhatsappToken] = useState(() => {
+    return localStorage.getItem('whatsapp_token') || '';
+  });
+
+  const [phoneId, setPhoneId] = useState(() => {
+    return localStorage.getItem('whatsapp_phone_id') || '';
   });
 
   // State Debugging
@@ -30,30 +34,53 @@ const App: React.FC = () => {
   }, [targetPhone]);
 
   useEffect(() => {
-    localStorage.setItem('telegram_bot_token', telegramToken);
-  }, [telegramToken]);
+    localStorage.setItem('whatsapp_token', whatsappToken);
+  }, [whatsappToken]);
+
+  useEffect(() => {
+    localStorage.setItem('whatsapp_phone_id', phoneId);
+  }, [phoneId]);
 
   const [isLiveSync, setIsLiveSync] = useState(false);
 
   const dataRef = useRef(data);
   const messagesRef = useRef(messages);
   const targetPhoneRef = useRef(targetPhone);
-  const telegramTokenRef = useRef(telegramToken);
+  const whatsappTokenRef = useRef(whatsappToken);
+  const phoneIdRef = useRef(phoneId);
   
   useEffect(() => {
     dataRef.current = data;
     messagesRef.current = messages;
     targetPhoneRef.current = targetPhone;
-    telegramTokenRef.current = telegramToken;
-  }, [data, messages, targetPhone, telegramToken]);
+    whatsappTokenRef.current = whatsappToken;
+    phoneIdRef.current = phoneId;
+  }, [data, messages, targetPhone, whatsappToken, phoneId]);
 
   useEffect(() => {
     initializeGeminiChat(data);
     setMessages(data.messages);
   }, [data.id]);
 
+  // Check Backend Connection on Mount
+  useEffect(() => {
+    const checkBackend = async () => {
+        try {
+            const res = await fetch(API_BASE_URL);
+            if (res.ok) {
+                setBackendConnection('connected');
+            } else {
+                setBackendConnection('error');
+            }
+        } catch (e) {
+            setBackendConnection('error');
+        }
+    };
+    checkBackend();
+  }, []);
+
   // =========================================================
-  // LOGIC SINKRONISASI TELEGRAM (POLLING)
+  // LOGIC SINKRONISASI WA (POLLING)
   // =========================================================
   useEffect(() => {
     let intervalId: any;
@@ -69,7 +96,7 @@ const App: React.FC = () => {
         const json = await response.json();
 
         if (json.hasNew && json.messages && json.messages.length > 0) {
-            console.log(`📥 Received ${json.messages.length} new messages from Telegram`);
+            console.log(`📥 Received ${json.messages.length} new messages from WA`);
             
             for (const msg of json.messages) {
                 const userText = msg.content;
@@ -99,7 +126,8 @@ const App: React.FC = () => {
                     }));
 
                     const replyTarget = sender || targetPhoneRef.current;
-                    const token = telegramTokenRef.current;
+                    const token = whatsappTokenRef.current;
+                    const pId = phoneIdRef.current;
 
                     await fetch(`${API_BASE_URL}/api/send-message`, {
                         method: 'POST',
@@ -108,7 +136,9 @@ const App: React.FC = () => {
                             customerId: currentId,
                             message: responseText,
                             target: replyTarget,
-                            token: token
+                            token: token,
+                            phoneId: pId,
+                            isTemplate: false // Reply selalu text biasa
                         })
                     });
 
@@ -146,8 +176,6 @@ const App: React.FC = () => {
       intervalId = setInterval(processIncomingMessages, 3000); 
       debugIntervalId = setInterval(checkWebhookStatus, 5000);
       checkWebhookStatus(); 
-      // Initial ping check
-      fetch(API_BASE_URL).then(r => r.ok ? setBackendConnection('connected') : setBackendConnection('error')).catch(() => setBackendConnection('error'));
     }
 
     return () => {
@@ -156,40 +184,47 @@ const App: React.FC = () => {
     };
   }, [isLiveSync]); 
 
-  // New Function: Simulate Incoming Webhook (Telegram Format)
+  // New Function: Simulate Incoming Webhook (WA Format)
   const handleSimulateWebhook = async () => {
     setSimulating(true);
     try {
-        // Simulasi Format Telegram Bot API Update
-        const telegramPayload = {
-            update_id: 123456789,
-            message: {
-                message_id: 555,
-                from: {
-                    id: 987654321,
-                    is_bot: false,
-                    first_name: "Simulated User",
-                    username: "sim_user"
-                },
-                chat: {
-                    id: 987654321,
-                    first_name: "Simulated User",
-                    username: "sim_user",
-                    type: "private"
-                },
-                date: 16788888,
-                text: "Halo, ini pesan test simulasi Format Telegram!"
-            }
+        // Simulasi Format WhatsApp Cloud API
+        const waPayload = {
+            object: "whatsapp_business_account",
+            entry: [{
+                id: "123456789",
+                changes: [{
+                    value: {
+                        messaging_product: "whatsapp",
+                        metadata: {
+                            display_phone_number: "1234567890",
+                            phone_number_id: "1234567890"
+                        },
+                        contacts: [{
+                            profile: { name: "Simulated User" },
+                            wa_id: "628123456789"
+                        }],
+                        messages: [{
+                            from: "628123456789",
+                            id: "wamid.HBgL...",
+                            timestamp: Date.now() / 1000,
+                            text: { body: "Halo, ini pesan test simulasi WA!" },
+                            type: "text"
+                        }]
+                    },
+                    field: "messages"
+                }]
+            }]
         };
 
         const res = await fetch(`${API_BASE_URL}/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(telegramPayload)
+            body: JSON.stringify(waPayload)
         });
         
         if (res.ok) {
-            alert("Simulasi Telegram Terkirim! Cek indikator status sebentar lagi.");
+            alert("Simulasi WA Terkirim! Cek indikator status sebentar lagi.");
         } else {
             alert("Gagal kirim simulasi. Backend error.");
         }
@@ -229,8 +264,16 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-slate-100 font-sans overflow-hidden relative">
       
+      {/* Backend Error Banner */}
+      {backendConnection === 'error' && (
+        <div className="w-full bg-red-600 text-white text-[10px] py-1.5 px-4 text-center font-bold absolute top-0 z-[60] flex items-center justify-center gap-2 shadow-md animate-in slide-in-from-top-full duration-500">
+           <WifiOff size={12} />
+           <span>Gagal menghubungi backend. Pastikan server Railway/Localhost aktif.</span>
+        </div>
+      )}
+
       {/* Top Control Bar - Minimalist View Toggle Only */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 items-start flex-wrap justify-end pl-4 pointer-events-auto">
+      <div className={`absolute top-4 right-4 z-50 flex gap-2 items-start flex-wrap justify-end pl-4 pointer-events-auto transition-all ${backendConnection === 'error' ? 'mt-6' : ''}`}>
         {/* View Mode */}
         <div className="flex bg-white rounded-lg shadow-md border border-slate-200 p-1 h-[34px] items-center">
           <button 
@@ -253,13 +296,15 @@ const App: React.FC = () => {
       {viewMode === 'dashboard' ? (
         // === DASHBOARD VIEW ===
         <>
-          <div className="w-1/3 min-w-[320px] max-w-[400px] h-full border-r border-slate-200 hidden md:block z-10">
+          <div className="w-1/3 min-w-[320px] max-w-[400px] h-full border-r border-slate-200 hidden md:block z-10 pt-6">
             <CustomerPanel 
                 data={data} 
                 targetPhone={targetPhone}
                 setTargetPhone={setTargetPhone}
-                telegramToken={telegramToken}
-                setTelegramToken={setTelegramToken}
+                whatsappToken={whatsappToken}
+                setWhatsappToken={setWhatsappToken}
+                phoneId={phoneId}
+                setPhoneId={setPhoneId}
                 isLiveSync={isLiveSync}
                 setIsLiveSync={setIsLiveSync}
                 webhookStatus={webhookStatus}
@@ -269,7 +314,7 @@ const App: React.FC = () => {
                 onSwitchCustomer={handleSwitchCustomer}
             />
           </div>
-          <div className="flex-1 h-full z-10">
+          <div className="flex-1 h-full z-10 pt-6">
             <ChatInterface 
               messages={messages} 
               onSendMessage={handleSendMessage} 
@@ -280,7 +325,7 @@ const App: React.FC = () => {
         </>
       ) : (
         // === CUSTOMER MOBILE VIEW ===
-        <div className="w-full h-full flex items-center justify-center bg-slate-200 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')]">
+        <div className="w-full h-full flex items-center justify-center bg-slate-200 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] pt-6">
           <div className="w-full max-w-[380px] h-[90vh] bg-white rounded-[30px] shadow-2xl overflow-hidden border-[8px] border-slate-800 flex flex-col relative">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-2xl z-20"></div>
             <div className="flex-1 overflow-hidden">

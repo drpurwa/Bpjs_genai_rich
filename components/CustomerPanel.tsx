@@ -6,7 +6,7 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash, HelpCircle, Code, FileJson
 } from 'lucide-react';
 
 interface CustomerPanelProps {
@@ -47,6 +47,12 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
   const [showDebug, setShowDebug] = useState(false);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [tokenStatus, setTokenStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  
+  // Manual Simulation State
+  const [manualJson, setManualJson] = useState('');
+  const [manualSimStatus, setManualSimStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [manualSimResult, setManualSimResult] = useState('');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
@@ -90,7 +96,6 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     try {
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
       
-      // Kirim Template default sesuai request user (jaspers_market_plain_text_v1)
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
@@ -102,7 +107,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
           token: whatsappToken.trim(),
           phoneId: phoneId.trim(),
           isTemplate: true, 
-          message: "jaspers_market_plain_text_v1" // Nama template dikirim di field message
+          message: "jaspers_market_plain_text_v1"
         }),
       });
 
@@ -121,6 +126,82 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
       setSendingStatus('error');
       setErrorMessage("Network Error: " + (error.message || 'Check connection'));
     }
+  };
+
+  const handleManualSimulation = async () => {
+      if (!manualJson.trim()) return;
+      setManualSimStatus('running');
+      setManualSimResult('');
+      
+      try {
+          // Validate JSON first
+          let parsed;
+          try {
+              parsed = JSON.parse(manualJson);
+          } catch(e) {
+              setManualSimStatus('error');
+              setManualSimResult('Invalid JSON format');
+              return;
+          }
+
+          const res = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(parsed)
+          });
+          
+          const json = await res.json();
+          if (res.ok && json.success) {
+              setManualSimStatus('success');
+              setManualSimResult('✅ Sukses! Pesan diterima server & masuk antrian.');
+          } else {
+              setManualSimStatus('error');
+              setManualSimResult(`❌ Gagal: ${json.reason || json.error || 'Unknown error'}`);
+          }
+
+      } catch (e: any) {
+          setManualSimStatus('error');
+          setManualSimResult(`Network Error: ${e.message}`);
+      }
+  };
+
+  const fillTemplateJson = () => {
+      const template = {
+        "object": "whatsapp_business_account",
+        "entry": [
+          {
+            "id": "1430450225258870",
+            "changes": [
+              {
+                "value": {
+                  "messaging_product": "whatsapp",
+                  "metadata": {
+                    "display_phone_number": "15551841728",
+                    "phone_number_id": phoneId || "889407650931797"
+                  },
+                  "contacts": [
+                    {
+                      "profile": { "name": "Test User" },
+                      "wa_id": targetPhone || "628123810892"
+                    }
+                  ],
+                  "messages": [
+                    {
+                      "from": targetPhone || "628123810892",
+                      "id": "wamid.TEST" + Date.now(),
+                      "timestamp": Math.floor(Date.now() / 1000).toString(),
+                      "text": { "body": "Tes Simulasi Manual" },
+                      "type": "text"
+                    }
+                  ]
+                },
+                "field": "messages"
+              }
+            ]
+          }
+        ]
+      };
+      setManualJson(JSON.stringify(template, null, 2));
   };
 
   const lastPromise = data.payment_commitment_history.last_promise || data.payment_commitment_history.promises?.[0];
@@ -143,9 +224,9 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
             </button>
         </div>
 
-        {/* Control Box (Collapsible) */}
+        {/* Control Box (Collapsible & Scrollable) */}
         {isControlPanelOpen && (
-            <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-300 origin-top">
+            <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-300 origin-top max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300">
                 
                 {/* Customer Selector */}
                 <div className="relative group">
@@ -243,15 +324,37 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     {/* Debug Info Mini / Expandable */}
                     {isLiveSync && (
                         <div className="mt-2">
-                            <button 
-                                onClick={() => setShowDebug(!showDebug)}
-                                className="w-full text-[10px] text-blue-600 flex items-center justify-center gap-1 hover:underline mb-1"
-                            >
-                            {showDebug ? 'Sembunyikan Detail Webhook' : 'Lihat Detail Webhook'}
-                            </button>
+                            <div className="flex items-center justify-between">
+                                <button 
+                                    onClick={() => setShowDebug(!showDebug)}
+                                    className="text-[10px] text-blue-600 flex items-center gap-1 hover:underline"
+                                >
+                                {showDebug ? 'Tutup Detail Webhook' : 'Lihat Detail Webhook'}
+                                </button>
+                                
+                                <button 
+                                    onClick={() => setShowTroubleshoot(!showTroubleshoot)}
+                                    className="text-[10px] text-slate-500 flex items-center gap-1 hover:text-slate-700"
+                                >
+                                    <HelpCircle size={10} />
+                                    Pesan tidak masuk?
+                                </button>
+                            </div>
+
+                            {/* TROUBLESHOOTING GUIDE */}
+                            {showTroubleshoot && (
+                                <div className="mt-2 bg-orange-50 text-orange-800 p-2 rounded text-[10px] border border-orange-200">
+                                    <strong className="block mb-1">Jika pesan WA asli tidak masuk:</strong>
+                                    <ul className="list-disc pl-3 space-y-1">
+                                        <li>Cek apakah App di Meta dalam <strong>Development Mode</strong>?</li>
+                                        <li>Jika YA, nomor HP pengirim <strong>WAJIB</strong> ditambahkan ke menu <strong>"Test Numbers"</strong> di Meta Dashboard.</li>
+                                        <li>Tanpa itu, Meta akan memblokir pesan sebelum sampai ke server ini.</li>
+                                    </ul>
+                                </div>
+                            )}
 
                             {showDebug && (
-                                <div className="bg-slate-800 text-white p-3 rounded-md text-[10px] space-y-3 animate-in fade-in slide-in-from-top-2">
+                                <div className="bg-slate-800 text-white p-3 rounded-md text-[10px] space-y-3 animate-in fade-in slide-in-from-top-2 mt-2">
                                     {/* Config Info */}
                                     <div className="space-y-1 pb-2 border-b border-slate-600">
                                         <div className="font-bold text-green-400 mb-1">SETUP DI META DASHBOARD:</div>
@@ -299,14 +402,43 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                         )}
                                     </div>
 
-                                    {/* Simulation Button */}
-                                    <button 
-                                        onClick={onSimulateWebhook}
-                                        disabled={simulating}
-                                        className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 py-1.5 rounded flex items-center justify-center gap-1 text-white disabled:opacity-50"
-                                    >
-                                        <PlayCircle size={10} /> Test Webhook
-                                    </button>
+                                    {/* Quick Simulation */}
+                                    <div className="pt-2 border-t border-slate-600">
+                                        <div className="font-bold text-blue-400 mb-1">SIMULATOR:</div>
+                                        <button 
+                                            onClick={onSimulateWebhook}
+                                            disabled={simulating}
+                                            className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 py-1.5 rounded flex items-center justify-center gap-1 text-white disabled:opacity-50 mb-2"
+                                        >
+                                            <PlayCircle size={10} /> Quick Test (Default Payload)
+                                        </button>
+
+                                        {/* Manual JSON Simulator */}
+                                        <div className="text-slate-400 mb-1 flex justify-between items-center">
+                                            <span>Manual JSON Payload:</span>
+                                            <button onClick={fillTemplateJson} className="text-xs text-blue-400 underline hover:text-blue-300 flex gap-1 items-center"><FileJson size={10}/> Paste Template</button>
+                                        </div>
+                                        <textarea
+                                            value={manualJson}
+                                            onChange={(e) => setManualJson(e.target.value)}
+                                            className="w-full h-24 bg-slate-900 border border-slate-700 rounded p-2 text-[9px] font-mono text-slate-300 focus:border-blue-500 outline-none resize-none"
+                                            placeholder='Paste JSON dari Meta Dashboard Log di sini...'
+                                        />
+                                        <button 
+                                            onClick={handleManualSimulation}
+                                            disabled={manualSimStatus === 'running'}
+                                            className="w-full mt-1 bg-blue-700 hover:bg-blue-600 py-1.5 rounded text-white font-bold flex items-center justify-center gap-1"
+                                        >
+                                            {manualSimStatus === 'running' ? <Loader2 size={10} className="animate-spin" /> : <Code size={10} />}
+                                            Run Manual Simulation
+                                        </button>
+                                        
+                                        {manualSimResult && (
+                                            <div className={`mt-2 p-1.5 rounded text-[9px] ${manualSimStatus === 'success' ? 'bg-green-900/50 text-green-200' : 'bg-red-900/50 text-red-200'}`}>
+                                                {manualSimResult}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>

@@ -8,6 +8,16 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // ==========================================
+// LOGGER MIDDLEWARE (CRITICAL FOR DEBUGGING)
+// ==========================================
+// Ini akan mencatat SETIAP request yang masuk, apapun path-nya.
+// Jika log ini tidak muncul saat Anda kirim WA, berarti Meta memblokir pesan sebelum sampai sini.
+app.use((req, res, next) => {
+  console.log(`[TRAFFIC] ${req.method} ${req.url} | From: ${req.ip} | UA: ${req.get('user-agent')}`);
+  next();
+});
+
+// ==========================================
 // KONFIGURASI WHATSAPP CLOUD API
 // ==========================================
 // Token Verifikasi Webhook (Anda buat sendiri, masukkan ini di Dashboard Meta)
@@ -29,6 +39,64 @@ global.lastWebhookData = {
 };
 
 // ==========================================
+// HELPER: PROCESS WEBHOOK LOGIC
+// ==========================================
+const processWebhookPayload = (body) => {
+    // Cek apakah ini event dari WhatsApp
+    if (body.object) {
+        if (
+            body.entry &&
+            body.entry[0].changes &&
+            body.entry[0].changes[0].value.messages &&
+            body.entry[0].changes[0].value.messages[0]
+        ) {
+            // === INI ADALAH PESAN TEKS DARI USER ===
+            const msgObj = body.entry[0].changes[0].value.messages[0];
+            const from = msgObj.from; 
+            const msgBody = msgObj.text ? msgObj.text.body : "[Non-text message]";
+            const msgId = msgObj.id;
+            const contacts = body.entry[0].changes[0].value.contacts;
+            const name = contacts ? contacts[0].profile.name : "Unknown";
+
+            console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody}`);
+
+            // Simpan data untuk Debug
+            global.lastWebhookData = {
+                receivedAt: new Date().toLocaleString('id-ID'),
+                sender: from,
+                message: msgBody,
+                rawBody: body
+            };
+
+            // Masukkan ke Queue untuk dipoll oleh Frontend
+            const newMessage = {
+                id: msgId,
+                content: msgBody,
+                sender: from,
+                timestamp: Date.now()
+            };
+            global.incomingMessageQueue.push(newMessage);
+            
+            return { success: true, type: 'message', data: newMessage };
+        } 
+        else if (
+            body.entry &&
+            body.entry[0].changes &&
+            body.entry[0].changes[0].value.statuses
+        ) {
+            // === INI ADALAH STATUS UPDATE (SENT/DELIVERED/READ) ===
+            const status = body.entry[0].changes[0].value.statuses[0];
+            console.log(`📣 [MSG STATUS] Status update for ${status.recipient_id}: ${status.status}`);
+            return { success: true, type: 'status', data: status };
+        } 
+        else {
+            return { success: false, reason: 'Unknown event type (not message/status)' };
+        }
+    }
+    return { success: false, reason: 'Invalid payload object' };
+};
+
+// ==========================================
 // ROOT HEALTH CHECK
 // ==========================================
 app.get('/', (req, res) => {
@@ -37,6 +105,7 @@ app.get('/', (req, res) => {
     platform: process.env.RAILWAY_STATIC_URL ? 'Railway' : 'Localhost',
     mode: 'WhatsApp Cloud API',
     port: port,
+    tips: 'Jika webhook tidak masuk, pastikan nomor pengirim sudah ditambahkan di "Test Numbers" Meta Dashboard.',
     time: new Date().toISOString() 
   });
 });
@@ -158,7 +227,22 @@ app.get('/api/poll-incoming', (req, res) => {
 });
 
 // ==========================================
-// 4. WEBHOOK (GET) - VERIFIKASI META
+// 4. API: MANUAL SIMULATION (DEBUGGING)
+// ==========================================
+app.post('/api/simulate-webhook', (req, res) => {
+    const body = req.body;
+    console.log('🧪 [SIMULATION] Received manual payload');
+    const result = processWebhookPayload(body);
+    
+    if (result.success) {
+        res.json({ success: true, result });
+    } else {
+        res.status(400).json({ success: false, reason: result.reason });
+    }
+});
+
+// ==========================================
+// 5. WEBHOOK (GET) - VERIFIKASI META
 // ==========================================
 // Meta akan memanggil ini saat Anda memasukkan Callback URL di Dashboard
 app.get('/webhook', (req, res) => {
@@ -181,67 +265,23 @@ app.get('/webhook', (req, res) => {
 });
 
 // ==========================================
-// 5. WEBHOOK (POST) - MENERIMA PESAN WA
+// 6. WEBHOOK (POST) - MENERIMA PESAN WA
 // ==========================================
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
   // Log RAW BODY untuk debugging (sangat penting untuk melihat struktur pesan asli)
-  console.log('🔔 [WEBHOOK EVENT] Received payload:', JSON.stringify(body, null, 2));
+  console.log('🔔 [WEBHOOK EVENT] Payload:', JSON.stringify(body || {}, null, 2));
 
-  // Cek apakah ini event dari WhatsApp
-  if (body.object) {
-    if (
-      body.entry &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0].value.messages &&
-      body.entry[0].changes[0].value.messages[0]
-    ) {
-      // === INI ADALAH PESAN TEKS DARI USER ===
-      const msgObj = body.entry[0].changes[0].value.messages[0];
-      const from = msgObj.from; 
-      const msgBody = msgObj.text ? msgObj.text.body : "[Non-text message]";
-      const msgId = msgObj.id;
-      const contacts = body.entry[0].changes[0].value.contacts;
-      const name = contacts ? contacts[0].profile.name : "Unknown";
+  const result = processWebhookPayload(body);
 
-      console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody}`);
-
-      // Simpan data untuk Debug
-      global.lastWebhookData = {
-          receivedAt: new Date().toLocaleString('id-ID'),
-          sender: from,
-          message: msgBody,
-          rawBody: body
-      };
-
-      // Masukkan ke Queue untuk dipoll oleh Frontend
-      global.incomingMessageQueue.push({
-          id: msgId,
-          content: msgBody,
-          sender: from,
-          timestamp: Date.now()
-      });
-    } else if (
-        body.entry &&
-        body.entry[0].changes &&
-        body.entry[0].changes[0].value.statuses
-    ) {
-        // === INI ADALAH STATUS UPDATE (SENT/DELIVERED/READ) ===
-        // Kita log saja, tidak perlu dimasukkan ke queue chat
-        const status = body.entry[0].changes[0].value.statuses[0];
-        console.log(`📣 [MSG STATUS] Status update for ${status.recipient_id}: ${status.status}`);
-    } else {
-        // Event lain (bukan message, bukan status)
-        console.log('⚠️ [UNKNOWN EVENT] Struktur webhook valid tapi tidak dikenali.');
-    }
-    
-    // SELALU return 200 OK ke Meta, atau mereka akan stop mengirim webhook
-    res.sendStatus(200);
+  if (result.success) {
+      res.sendStatus(200);
   } else {
-    // Bukan payload WhatsApp
-    console.log('❌ [INVALID] Not a WhatsApp object payload');
-    res.sendStatus(404);
+      // Walaupun struktur salah, kita tetap return 200 ke Meta agar tidak diretry terus menerus
+      // Tapi kita log errornya
+      console.log(`⚠️ [WEBHOOK IGNORED] Reason: ${result.reason}`);
+      res.sendStatus(200); 
   }
 });
 

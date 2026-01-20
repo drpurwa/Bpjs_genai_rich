@@ -30,18 +30,32 @@ Di Meta Dashboard -> **WhatsApp** -> **Configuration**:
    ```
 4. Klik **Verify and Save**.
 
-### ⚠️ WAJIB DILAKUKAN AGAR PESAN MASUK:
-Setelah Verify and Save berhasil, lihat bagian **Webhook fields**.
-1. Klik tombol **Manage**.
-2. Cari kolom **messages** di dalam tabel.
-3. Klik **Subscribe** (Centang) pada kolom `messages`.
-4. (Opsional) Anda bisa juga subscribe ke `message_echoes` atau `message_deliveries`.
-5. Klik **Done**.
+### ⚠️ WAJIB: SUBSCRIBE FIELDS
+Setelah Verify and Save berhasil:
+1. Klik tombol **Manage** di sebelah tulisan *Webhook fields*.
+2. Cari kolom **messages** (v24.0 atau terbaru).
+3. **KLIK SUBSCRIBE (Centang)**.
+4. Klik **Done**.
 
-**Jika langkah ini tidak dilakukan, Meta tidak akan mengirim pesan chat ke server Anda, meskipun tes koneksi berhasil.**
+---
 
-## 5. Testing
-1. Klik tombol **"WHATSAPP BOT: ON"** di Aplikasi RICH.
-2. Klik **"Kirim Template (Jaspers Market)"**.
-3. Balas pesan tersebut lewat WhatsApp di HP Anda.
-4. Cek Log di Dashboard Railway untuk melihat data mentah pesan yang masuk.
+## 5. SOLUSI JIKA PESAN TIDAK MASUK (TROUBLESHOOTING)
+
+Jika Anda sudah mengirim pesan dari WA tapi server tidak merespon, periksa ini:
+
+### A. Tambahkan Nomor Anda sebagai TESTER (Wajib di Mode Development)
+Saat App masih dalam **Development Mode** (lihat pojok kiri atas dashboard), Bot **TIDAK AKAN** merespon nomor sembarangan.
+1. Buka Meta Dashboard -> Menu **WhatsApp** -> **API Setup**.
+2. Scroll ke bagian **"To"** (Step 5: Send a message).
+3. Klik **Manage phone number list**.
+4. **Tambahkan nomor WA asli Anda** yang digunakan untuk mengetes.
+5. Anda akan menerima kode OTP di WA. Masukkan kode tersebut untuk verifikasi.
+6. **Hanya nomor yang sudah diverifikasi di sini yang bisa chat dengan Bot saat mode Development.**
+
+### B. Mulai Percakapan Dulu
+WhatsApp membatasi bot untuk memulai chat ke user (kecuali via Template).
+1. Pastikan Anda (sebagai User) mengirim pesan "Halo" duluan ke nomor Bot.
+2. Atau, kirim Template "Hello World" / "Jaspers Market" dari dashboard aplikasi RICH terlebih dahulu.
+
+### C. Cek Log Backend
+Buka dashboard Railway, klik tab **Logs**. Jika tidak ada log sama sekali saat Anda kirim pesan, berarti masalahnya ada di **Poin A (Nomor belum terdaftar sebagai tester)**.

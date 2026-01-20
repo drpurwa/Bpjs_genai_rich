@@ -6,7 +6,7 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash, HelpCircle, Code, FileJson
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash, HelpCircle, Code, FileJson, Trash2, AlignLeft
 } from 'lucide-react';
 
 interface CustomerPanelProps {
@@ -128,19 +128,43 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     }
   };
 
+  const cleanAndParseJson = (input: string) => {
+    let cleanInput = input.trim();
+    // Jika ada text tambahan di luar JSON (misal "Full payload: {...}"), kita cari kurung kurawal terluar
+    const firstBrace = cleanInput.indexOf('{');
+    const lastBrace = cleanInput.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleanInput = cleanInput.substring(firstBrace, lastBrace + 1);
+    }
+    
+    return JSON.parse(cleanInput);
+  };
+
+  const handleFormatJson = () => {
+      if (!manualJson.trim()) return;
+      try {
+          const parsed = cleanAndParseJson(manualJson);
+          setManualJson(JSON.stringify(parsed, null, 2));
+          setManualSimResult('');
+      } catch (e) {
+          setManualSimResult('Invalid JSON: Tidak bisa diformat');
+      }
+  };
+
   const handleManualSimulation = async () => {
       if (!manualJson.trim()) return;
       setManualSimStatus('running');
       setManualSimResult('');
       
       try {
-          // Validate JSON first
+          // Validate & Sanitize JSON first
           let parsed;
           try {
-              parsed = JSON.parse(manualJson);
+              parsed = cleanAndParseJson(manualJson);
           } catch(e) {
               setManualSimStatus('error');
-              setManualSimResult('Invalid JSON format');
+              setManualSimResult('Invalid JSON format: Pastikan copy-paste lengkap kurung kurawalnya { }');
               return;
           }
 
@@ -414,9 +438,19 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                         </button>
 
                                         {/* Manual JSON Simulator */}
-                                        <div className="text-slate-400 mb-1 flex justify-between items-center">
+                                        <div className="text-slate-400 mb-1 flex justify-between items-center flex-wrap gap-2">
                                             <span>Manual JSON Payload:</span>
-                                            <button onClick={fillTemplateJson} className="text-xs text-blue-400 underline hover:text-blue-300 flex gap-1 items-center"><FileJson size={10}/> Paste Template</button>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setManualJson('')} className="text-xs text-red-400 hover:text-red-300 flex gap-1 items-center bg-slate-700 px-1.5 py-0.5 rounded" title="Bersihkan">
+                                                    <Trash2 size={10}/> Clear
+                                                </button>
+                                                <button onClick={handleFormatJson} className="text-xs text-yellow-400 hover:text-yellow-300 flex gap-1 items-center bg-slate-700 px-1.5 py-0.5 rounded" title="Format/Rapikan JSON">
+                                                    <AlignLeft size={10}/> Format
+                                                </button>
+                                                <button onClick={fillTemplateJson} className="text-xs text-blue-400 hover:text-blue-300 flex gap-1 items-center bg-slate-700 px-1.5 py-0.5 rounded" title="Isi Template">
+                                                    <FileJson size={10}/> Template
+                                                </button>
+                                            </div>
                                         </div>
                                         <textarea
                                             value={manualJson}

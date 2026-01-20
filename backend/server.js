@@ -167,9 +167,11 @@ app.get('/webhook', (req, res) => {
 
   if (mode && token) {
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED');
+      console.log('✅ WEBHOOK_VERIFIED');
       res.status(200).send(challenge);
     } else {
+      console.log('❌ WEBHOOK VERIFICATION FAILED. Token mismatch.');
+      console.log(`Expected: ${VERIFY_TOKEN}, Received: ${token}`);
       res.sendStatus(403);
     }
   } else {

@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
   const [targetPhone, setTargetPhone] = useState(() => {
-    return localStorage.getItem('target_phone') || '08123810892';
+    return localStorage.getItem('target_phone') || '123456789'; // Default ID dummy Telegram
   });
 
   // State Debugging
@@ -43,7 +43,7 @@ const App: React.FC = () => {
   }, [data.id]);
 
   // =========================================================
-  // LOGIC SINKRONISASI WA (POLLING)
+  // LOGIC SINKRONISASI TELEGRAM (POLLING)
   // =========================================================
   useEffect(() => {
     let intervalId: any;
@@ -59,7 +59,7 @@ const App: React.FC = () => {
         const json = await response.json();
 
         if (json.hasNew && json.messages && json.messages.length > 0) {
-            console.log(`📥 Received ${json.messages.length} new messages from WA`);
+            console.log(`📥 Received ${json.messages.length} new messages from Telegram`);
             
             for (const msg of json.messages) {
                 const userText = msg.content;
@@ -144,36 +144,40 @@ const App: React.FC = () => {
     };
   }, [isLiveSync]); 
 
-  // New Function: Simulate Incoming Webhook (Meta Format)
+  // New Function: Simulate Incoming Webhook (Telegram Format)
   const handleSimulateWebhook = async () => {
     setSimulating(true);
     try {
-        // Simulasi Format Meta Cloud API
-        const metaPayload = {
-            object: "whatsapp_business_account",
-            entry: [{
-                changes: [{
-                    value: {
-                        messages: [{
-                            from: "628999999999",
-                            id: "wamid.HBgLMT...",
-                            text: { body: "Halo, ini pesan test simulasi Format Meta!" },
-                            type: "text",
-                            timestamp: "16788888"
-                        }]
-                    }
-                }]
-            }]
+        // Simulasi Format Telegram Bot API Update
+        const telegramPayload = {
+            update_id: 123456789,
+            message: {
+                message_id: 555,
+                from: {
+                    id: 987654321,
+                    is_bot: false,
+                    first_name: "Simulated User",
+                    username: "sim_user"
+                },
+                chat: {
+                    id: 987654321,
+                    first_name: "Simulated User",
+                    username: "sim_user",
+                    type: "private"
+                },
+                date: 16788888,
+                text: "Halo, ini pesan test simulasi Format Telegram!"
+            }
         };
 
         const res = await fetch(`${API_BASE_URL}/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(metaPayload)
+            body: JSON.stringify(telegramPayload)
         });
         
         if (res.ok) {
-            alert("Simulasi Terkirim! Cek indikator status sebentar lagi.");
+            alert("Simulasi Telegram Terkirim! Cek indikator status sebentar lagi.");
         } else {
             alert("Gagal kirim simulasi. Backend error.");
         }

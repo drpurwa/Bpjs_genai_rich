@@ -6,7 +6,7 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare
 } from 'lucide-react';
 
 interface CustomerPanelProps {
@@ -121,17 +121,17 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     </div>
                 </div>
 
-                {/* Target Phone */}
+                {/* Target Chat ID (Telegram) */}
                 <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Nomor WhatsApp Tujuan</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Telegram Chat ID</div>
                     <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
-                        <Phone size={14} className="text-slate-400" />
+                        <MessageSquare size={14} className="text-slate-400" />
                         <input 
                             type="text" 
                             value={targetPhone}
                             onChange={(e) => setTargetPhone(e.target.value)}
                             className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
-                            placeholder="0812..."
+                            placeholder="12345678"
                         />
                     </div>
                 </div>
@@ -147,7 +147,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     >
                         <div className="flex items-center gap-2">
                             {isLiveSync ? <Link2 size={14} /> : <Link2Off size={14} />}
-                            {isLiveSync ? 'META API: CONNECTED' : 'OFFLINE MODE'}
+                            {isLiveSync ? 'TELEGRAM BOT: ON' : 'OFFLINE MODE'}
                         </div>
                         <div className={`w-2 h-2 rounded-full ${isLiveSync ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
                     </button>
@@ -174,7 +174,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                             <Copy size={10} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${API_BASE_URL}/webhook`)}/>
                                         </div>
                                         <div className="flex items-center gap-1 text-slate-400 pt-1">
-                                            <span>Verify Token:</span> <code className="text-yellow-300">rich_secret_token</code>
+                                            <span>Bot Token:</span> <code className="text-yellow-300">Set di .env</code>
                                         </div>
                                     </div>
 
@@ -240,7 +240,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
             {sendingStatus === 'idle' && (
                 <>
                 <Send size={16} />
-                Kirim Template WA
+                Kirim Template Telegram
                 </>
             )}
             {sendingStatus === 'sending' && (

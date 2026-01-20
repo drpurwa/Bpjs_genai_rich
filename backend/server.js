@@ -203,7 +203,13 @@ app.post('/api/send-message', async (req, res) => {
 
     } catch (error) {
         const waError = error.response ? error.response.data : error.message;
-        console.error(`[WA SEND FAILED]`, JSON.stringify(waError, null, 2));
+        
+        // Cek Error Spesifik #131030 (Nomor belum terdaftar di test list)
+        if (waError && waError.error && waError.error.code === 131030) {
+            console.error(`❌ [ERROR #131030] Recipient ${target} is not in Allowed List! Add it to Meta Dashboard > Test Numbers.`);
+        } else {
+            console.error(`❌ [WA SEND FAILED]`, JSON.stringify(waError, null, 2));
+        }
         
         res.status(500).json({ 
             success: false, 

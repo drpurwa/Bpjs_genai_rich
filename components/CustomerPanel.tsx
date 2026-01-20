@@ -434,7 +434,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                             disabled={simulating}
                                             className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 py-1.5 rounded flex items-center justify-center gap-1 text-white disabled:opacity-50 mb-2"
                                         >
-                                            <PlayCircle size={10} /> Quick Test (Default Payload)
+                                            <PlayCircle size={10} /> Quick Test (via Target Phone)
                                         </button>
 
                                         {/* Manual JSON Simulator */}

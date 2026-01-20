@@ -18,7 +18,7 @@ const App: React.FC = () => {
   });
 
   const [whatsappToken, setWhatsappToken] = useState(() => {
-    return localStorage.getItem('whatsapp_token') || 'EAAeJN4fTa0QBQk3ZAjxOTRgDUeCBMzqZBNUX4ukfjIMYtP595ezOV2GPjiGZATfucYm0us1E7yUPygQMzZCCea2GVg2eXYpIWcpNpVWDCCMdvNOtqTaJIGqyqEiDRiuogQtLWJm0pHwUltFsm9kgp9NkHZCSbdZBeRDIW0bmSQJHQlFGcyw9erarPgqZADLpukVQ0jXrcYR8eo8ShZChiCZCxUKA75Bum8LmbhExdYBTHxTBAPXPNtY6AvsJzCL6mkAX19JrQlBZBThNSPtvjJBXHN';
+    return localStorage.getItem('whatsapp_token') || 'EAAeJN4fTa0QBQimXHdkM4fgeetIZCqiZABSXZB1nGc9ohnTM0txdhPECW9TyWDC9UCpmLBqiLQZCjg6l75SZANiwD9zocb6ZAgbz2xvbpX4msZARfEPHsiDiE6GMHVvwTcrLbL8hd9nGtV4T9uEYqb76eRV0vOVb5On6FTRWP04hYkl4RfWdiMH9Xvz4Ocyckq1wwjKppxmNDTiSKAsjd3w5tBZCvRYXsjIE9ZAdt';
   });
 
   const [phoneId, setPhoneId] = useState(() => {
@@ -188,6 +188,10 @@ const App: React.FC = () => {
   // New Function: Simulate Incoming Webhook (WA Format)
   const handleSimulateWebhook = async () => {
     setSimulating(true);
+    // Use target phone if available, else fallback to a dummy, 
+    // BUT we want to use target phone so the reply goes to the real device.
+    const simTarget = targetPhone || "628123456789"; 
+
     try {
         // Simulasi Format WhatsApp Cloud API
         const waPayload = {
@@ -203,11 +207,11 @@ const App: React.FC = () => {
                         },
                         contacts: [{
                             profile: { name: "Simulated User" },
-                            wa_id: "628123456789"
+                            wa_id: simTarget
                         }],
                         messages: [{
-                            from: "628123456789",
-                            id: "wamid.HBgL...",
+                            from: simTarget,
+                            id: "wamid.HBgL..." + Date.now(),
                             timestamp: Date.now() / 1000,
                             text: { body: "Halo, ini pesan test simulasi WA!" },
                             type: "text"
@@ -225,7 +229,7 @@ const App: React.FC = () => {
         });
         
         if (res.ok) {
-            alert("Simulasi WA Terkirim! Cek indikator status sebentar lagi.");
+            alert(`Simulasi Masuk!\n\nPesan simulasi telah dikirim ke backend seolah-olah dari nomor: ${simTarget}.\n\nBackend akan membalas via AI ke nomor WA tersebut.`);
         } else {
             alert("Gagal kirim simulasi. Backend error.");
         }

@@ -12,16 +12,17 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
+  // Default Values updated per user request
   const [targetPhone, setTargetPhone] = useState(() => {
-    return localStorage.getItem('target_phone') || '628...'; 
+    return localStorage.getItem('target_phone') || '628123810892'; 
   });
 
   const [whatsappToken, setWhatsappToken] = useState(() => {
-    return localStorage.getItem('whatsapp_token') || '';
+    return localStorage.getItem('whatsapp_token') || 'EAAeJN4fTa0QBQk3ZAjxOTRgDUeCBMzqZBNUX4ukfjIMYtP595ezOV2GPjiGZATfucYm0us1E7yUPygQMzZCCea2GVg2eXYpIWcpNpVWDCCMdvNOtqTaJIGqyqEiDRiuogQtLWJm0pHwUltFsm9kgp9NkHZCSbdZBeRDIW0bmSQJHQlFGcyw9erarPgqZADLpukVQ0jXrcYR8eo8ShZChiCZCxUKA75Bum8LmbhExdYBTHxTBAPXPNtY6AvsJzCL6mkAX19JrQlBZBThNSPtvjJBXHN';
   });
 
   const [phoneId, setPhoneId] = useState(() => {
-    return localStorage.getItem('whatsapp_phone_id') || '';
+    return localStorage.getItem('whatsapp_phone_id') || '889407650931797';
   });
 
   // State Debugging

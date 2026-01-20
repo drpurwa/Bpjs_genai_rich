@@ -105,19 +105,20 @@ app.post('/api/send-message', async (req, res) => {
         text: { preview_url: false, body: message }
     };
 
-    // Payload Template (Jika diminta, misal untuk pesan pertama)
-    // Menggunakan template 'hello_world' yang default ada di semua akun sandbox/live Meta
+    // Payload Template
     if (isTemplate) {
+        // Gunakan nilai 'message' sebagai nama template, atau fallback ke 'hello_world'
+        const templateName = message || "hello_world";
         payload = {
             messaging_product: "whatsapp",
             to: target,
             type: "template",
             template: {
-                name: "hello_world", // Template default Meta
+                name: templateName, 
                 language: { code: "en_US" }
             }
         };
-        console.log(`[OUTGOING WA] Sending Template hello_world to ${target}`);
+        console.log(`[OUTGOING WA] Sending Template '${templateName}' to ${target}`);
     } else {
         console.log(`[OUTGOING WA] Sending Text to ${target}: ${message}`);
     }

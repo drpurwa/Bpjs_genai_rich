@@ -90,7 +90,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     try {
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
       
-      // Kirim Template 'hello_world' sebagai test
+      // Kirim Template default sesuai request user (jaspers_market_plain_text_v1)
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
@@ -101,8 +101,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
           target: targetPhone,
           token: whatsappToken.trim(),
           phoneId: phoneId.trim(),
-          isTemplate: true, // Flag untuk kirim template
-          message: "hello_world" // Nama template default
+          isTemplate: true, 
+          message: "jaspers_market_plain_text_v1" // Nama template dikirim di field message
         }),
       });
 
@@ -335,7 +335,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
             {sendingStatus === 'idle' && (
                 <>
                 <Send size={16} />
-                Kirim Template (Hello World)
+                Kirim Template (Jaspers Market)
                 </>
             )}
             {sendingStatus === 'sending' && (

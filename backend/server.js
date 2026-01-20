@@ -10,12 +10,8 @@ const port = process.env.PORT || 3000;
 // ==========================================
 // KONFIGURASI TELEGRAM BOT API
 // ==========================================
-// Ambil token dari @BotFather
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
-
-if (!TELEGRAM_BOT_TOKEN) {
-  console.error("WARNING: TELEGRAM_BOT_TOKEN belum diset di .env");
-}
+// Token bisa dari env atau dikirim via body request (untuk demo/setup UI)
+const ENV_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -48,10 +44,43 @@ app.get('/api/debug', (req, res) => {
 });
 
 // ==========================================
-// 1. API: KIRIM PESAN (OUTGOING) - VIA TELEGRAM
+// 1. API: SETUP WEBHOOK (HELPER)
+// ==========================================
+app.post('/api/setup-webhook', async (req, res) => {
+    const { token, url } = req.body;
+    const botToken = token || ENV_BOT_TOKEN;
+
+    if (!botToken) {
+        return res.status(400).json({ success: false, error: "Token not provided" });
+    }
+    if (!url) {
+        return res.status(400).json({ success: false, error: "Webhook URL not provided" });
+    }
+
+    try {
+        const apiUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=${url}`;
+        const response = await axios.get(apiUrl);
+        res.json({ success: true, telegram_response: response.data });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: "Failed to set webhook", 
+            details: error.response ? error.response.data : error.message 
+        });
+    }
+});
+
+// ==========================================
+// 2. API: KIRIM PESAN (OUTGOING) - VIA TELEGRAM
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
-    let { customerId, message, target } = req.body;
+    let { customerId, message, target, token } = req.body;
+    
+    const botToken = token || ENV_BOT_TOKEN;
+
+    if (!botToken) {
+        return res.status(400).json({ success: false, error: "Telegram Bot Token missing (Check .env or UI Settings)" });
+    }
     
     // Target di Telegram adalah Chat ID (bisa angka positif/negatif)
     if (!target) {
@@ -61,7 +90,7 @@ app.post('/api/send-message', async (req, res) => {
     console.log(`[OUTGOING TELEGRAM] To: ${target} | Msg: ${message}`);
     
     try {
-        const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+        const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
         
         const response = await axios.post(url, {
             chat_id: target,
@@ -84,7 +113,7 @@ app.post('/api/send-message', async (req, res) => {
 });
 
 // ==========================================
-// 2. API: POLLING PESAN (INCOMING QUEUE)
+// 3. API: POLLING PESAN (INCOMING QUEUE)
 // ==========================================
 app.get('/api/poll-incoming', (req, res) => {
     if (global.incomingMessageQueue.length > 0) {
@@ -97,7 +126,7 @@ app.get('/api/poll-incoming', (req, res) => {
 });
 
 // ==========================================
-// 3. WEBHOOK EVENT (POST) - MENERIMA PESAN TELEGRAM
+// 4. WEBHOOK EVENT (POST) - MENERIMA PESAN TELEGRAM
 // ==========================================
 app.post('/webhook', (req, res) => {
   const body = req.body;

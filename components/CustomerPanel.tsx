@@ -6,13 +6,15 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key
 } from 'lucide-react';
 
 interface CustomerPanelProps {
   data: CustomerData;
   targetPhone: string;
   setTargetPhone: (val: string) => void;
+  telegramToken: string;
+  setTelegramToken: (val: string) => void;
   isLiveSync: boolean;
   setIsLiveSync: (val: boolean) => void;
   webhookStatus: {lastTime: string | null, lastSender: string | null, rawBody?: any};
@@ -26,6 +28,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     data, 
     targetPhone, 
     setTargetPhone,
+    telegramToken,
+    setTelegramToken,
     isLiveSync,
     setIsLiveSync,
     webhookStatus,
@@ -57,7 +61,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         },
         body: JSON.stringify({
           customerId: data.id,
-          target: targetPhone, 
+          target: targetPhone,
+          token: telegramToken, // Pass token from UI
           message: `Halo Bapak/Ibu, kami dari BPJS Kesehatan. Mengingatkan total tunggakan Anda sebesar ${formatCurrency(data.billing_info.total_tunggakan)}. Mohon segera diselesaikan.`
         }),
       });
@@ -75,6 +80,32 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
       console.error("Gagal menghubungi backend:", error);
       setSendingStatus('error');
       setErrorMessage(error.message || 'Network Error / Backend Down');
+    }
+  };
+
+  const handleSetupWebhook = async () => {
+    if (!telegramToken) {
+        alert("Mohon isi Bot Token terlebih dahulu!");
+        return;
+    }
+    try {
+        const webhookUrl = `${API_BASE_URL}/webhook`;
+        const response = await fetch(`${API_BASE_URL}/api/setup-webhook`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                token: telegramToken,
+                url: webhookUrl
+            })
+        });
+        const json = await response.json();
+        if (json.success) {
+            alert(`Webhook Berhasil Diset ke: ${webhookUrl}\n\nResponse Telegram: ${JSON.stringify(json.telegram_response)}`);
+        } else {
+            alert(`Gagal set webhook: ${json.error}`);
+        }
+    } catch (e) {
+        alert("Gagal menghubungi backend.");
     }
   };
 
@@ -136,6 +167,21 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     </div>
                 </div>
 
+                {/* Bot Token Input */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Bot Token (Optional)</div>
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                        <Key size={14} className="text-slate-400" />
+                        <input 
+                            type="text" 
+                            value={telegramToken}
+                            onChange={(e) => setTelegramToken(e.target.value)}
+                            className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                            placeholder="123456:ABC-Def..."
+                        />
+                    </div>
+                </div>
+
                 {/* Connect Toggle */}
                 <div>
                     <button 
@@ -173,8 +219,15 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                                             <code className="flex-1 truncate text-green-300">{API_BASE_URL}/webhook</code>
                                             <Copy size={10} className="cursor-pointer hover:text-white" onClick={() => navigator.clipboard.writeText(`${API_BASE_URL}/webhook`)}/>
                                         </div>
-                                        <div className="flex items-center gap-1 text-slate-400 pt-1">
-                                            <span>Bot Token:</span> <code className="text-yellow-300">Set di .env</code>
+                                        
+                                        {/* Setup Webhook Button */}
+                                        <div className="mt-2">
+                                            <button 
+                                                onClick={handleSetupWebhook}
+                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1 px-2 rounded text-[10px] font-bold"
+                                            >
+                                                Setup Webhook (Connect Telegram)
+                                            </button>
                                         </div>
                                     </div>
 

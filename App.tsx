@@ -16,6 +16,10 @@ const App: React.FC = () => {
     return localStorage.getItem('target_phone') || '123456789'; // Default ID dummy Telegram
   });
 
+  const [telegramToken, setTelegramToken] = useState(() => {
+    return localStorage.getItem('telegram_bot_token') || '';
+  });
+
   // State Debugging
   const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null, rawBody?: any}>({ lastTime: null, lastSender: null });
   const [backendConnection, setBackendConnection] = useState<'checking' | 'connected' | 'error'>('checking');
@@ -25,17 +29,23 @@ const App: React.FC = () => {
     localStorage.setItem('target_phone', targetPhone);
   }, [targetPhone]);
 
+  useEffect(() => {
+    localStorage.setItem('telegram_bot_token', telegramToken);
+  }, [telegramToken]);
+
   const [isLiveSync, setIsLiveSync] = useState(false);
 
   const dataRef = useRef(data);
   const messagesRef = useRef(messages);
   const targetPhoneRef = useRef(targetPhone);
+  const telegramTokenRef = useRef(telegramToken);
   
   useEffect(() => {
     dataRef.current = data;
     messagesRef.current = messages;
     targetPhoneRef.current = targetPhone;
-  }, [data, messages, targetPhone]);
+    telegramTokenRef.current = telegramToken;
+  }, [data, messages, targetPhone, telegramToken]);
 
   useEffect(() => {
     initializeGeminiChat(data);
@@ -89,6 +99,7 @@ const App: React.FC = () => {
                     }));
 
                     const replyTarget = sender || targetPhoneRef.current;
+                    const token = telegramTokenRef.current;
 
                     await fetch(`${API_BASE_URL}/api/send-message`, {
                         method: 'POST',
@@ -96,7 +107,8 @@ const App: React.FC = () => {
                         body: JSON.stringify({
                             customerId: currentId,
                             message: responseText,
-                            target: replyTarget 
+                            target: replyTarget,
+                            token: token
                         })
                     });
 
@@ -246,6 +258,8 @@ const App: React.FC = () => {
                 data={data} 
                 targetPhone={targetPhone}
                 setTargetPhone={setTargetPhone}
+                telegramToken={telegramToken}
+                setTelegramToken={setTelegramToken}
                 isLiveSync={isLiveSync}
                 setIsLiveSync={setIsLiveSync}
                 webhookStatus={webhookStatus}

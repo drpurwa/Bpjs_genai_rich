@@ -186,6 +186,9 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
+  // Log RAW BODY untuk debugging (sangat penting untuk melihat struktur pesan asli)
+  console.log('🔔 [WEBHOOK EVENT] Received payload:', JSON.stringify(body, null, 2));
+
   // Cek apakah ini event dari WhatsApp
   if (body.object) {
     if (
@@ -194,14 +197,15 @@ app.post('/webhook', (req, res) => {
       body.entry[0].changes[0].value.messages &&
       body.entry[0].changes[0].value.messages[0]
     ) {
+      // === INI ADALAH PESAN TEKS DARI USER ===
       const msgObj = body.entry[0].changes[0].value.messages[0];
-      const phoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
       const from = msgObj.from; 
       const msgBody = msgObj.text ? msgObj.text.body : "[Non-text message]";
       const msgId = msgObj.id;
-      const name = body.entry[0].changes[0].value.contacts[0].profile.name;
+      const contacts = body.entry[0].changes[0].value.contacts;
+      const name = contacts ? contacts[0].profile.name : "Unknown";
 
-      console.log(`[INCOMING WA] From: ${from} (${name}) | Msg: ${msgBody}`);
+      console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody}`);
 
       // Simpan data untuk Debug
       global.lastWebhookData = {
@@ -218,9 +222,25 @@ app.post('/webhook', (req, res) => {
           sender: from,
           timestamp: Date.now()
       });
+    } else if (
+        body.entry &&
+        body.entry[0].changes &&
+        body.entry[0].changes[0].value.statuses
+    ) {
+        // === INI ADALAH STATUS UPDATE (SENT/DELIVERED/READ) ===
+        // Kita log saja, tidak perlu dimasukkan ke queue chat
+        const status = body.entry[0].changes[0].value.statuses[0];
+        console.log(`📣 [MSG STATUS] Status update for ${status.recipient_id}: ${status.status}`);
+    } else {
+        // Event lain (bukan message, bukan status)
+        console.log('⚠️ [UNKNOWN EVENT] Struktur webhook valid tapi tidak dikenali.');
     }
+    
+    // SELALU return 200 OK ke Meta, atau mereka akan stop mengirim webhook
     res.sendStatus(200);
   } else {
+    // Bukan payload WhatsApp
+    console.log('❌ [INVALID] Not a WhatsApp object payload');
     res.sendStatus(404);
   }
 });

@@ -16,25 +16,32 @@ Di halaman **API Setup**, Anda akan melihat:
 2. Masukkan **Meta Access Token** dan **Phone Number ID**.
 3. Masukkan **Target Phone** (nomor WA Anda, format `628...`).
 
-## 4. Konfigurasi Webhook (YANG SEDANG ANDA BUKA)
-Di Meta Dashboard -> **WhatsApp** -> **Configuration** -> **Edit Webhook**:
+## 4. Konfigurasi Webhook (PENTING!)
+Di Meta Dashboard -> **WhatsApp** -> **Configuration**:
 
-1. **Callback URL**:
+1. Klik **Edit** pada bagian Webhook.
+2. **Callback URL**:
    ```
    https://bpjsgenairich-production.up.railway.app/webhook
    ```
-   *(Pastikan tidak ada spasi)*
-
-2. **Verify Token**:
+3. **Verify Token**:
    ```
    rich-ai-verify-token
    ```
+4. Klik **Verify and Save**.
 
-3. Klik **Verify and Save**.
-4. Jika error, pastikan Server Railway sudah aktif (Cek log di Railway).
-5. Setelah sukses, klik **Manage** -> Centang **messages** -> Done.
+### ⚠️ WAJIB DILAKUKAN AGAR PESAN MASUK:
+Setelah Verify and Save berhasil, lihat bagian **Webhook fields**.
+1. Klik tombol **Manage**.
+2. Cari kolom **messages** di dalam tabel.
+3. Klik **Subscribe** (Centang) pada kolom `messages`.
+4. (Opsional) Anda bisa juga subscribe ke `message_echoes` atau `message_deliveries`.
+5. Klik **Done**.
+
+**Jika langkah ini tidak dilakukan, Meta tidak akan mengirim pesan chat ke server Anda, meskipun tes koneksi berhasil.**
 
 ## 5. Testing
-1. Klik tombol **"WHATSAPP BOT: ON"**.
-2. Klik **"Kirim Template (Hello World)"**.
-3. Balas pesan di WA untuk tes pesan masuk.
+1. Klik tombol **"WHATSAPP BOT: ON"** di Aplikasi RICH.
+2. Klik **"Kirim Template (Jaspers Market)"**.
+3. Balas pesan tersebut lewat WhatsApp di HP Anda.
+4. Cek Log di Dashboard Railway untuk melihat data mentah pesan yang masuk.

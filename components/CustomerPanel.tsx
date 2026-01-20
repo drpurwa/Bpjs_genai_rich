@@ -6,7 +6,7 @@ import {
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check
 } from 'lucide-react';
 
 interface CustomerPanelProps {
@@ -41,10 +41,37 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
   const [sendingStatus, setSendingStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showDebug, setShowDebug] = useState(false);
-  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false); // State untuk Buka/Tutup Panel - Default Hidden
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
+  const [tokenStatus, setTokenStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
+  };
+
+  const handleVerifyToken = async () => {
+    if (!telegramToken) {
+        alert("Mohon isi Bot Token terlebih dahulu!");
+        return;
+    }
+    setTokenStatus('idle');
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/verify-token`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ token: telegramToken })
+        });
+        const json = await res.json();
+        if (json.success) {
+            setTokenStatus('valid');
+            alert(`✅ Token Valid!\nBot Name: ${json.bot.first_name}\nUsername: @${json.bot.username}`);
+        } else {
+            setTokenStatus('invalid');
+            alert(`❌ Token Invalid!\nError: ${json.error}\nDetails: ${JSON.stringify(json.details)}`);
+        }
+    } catch (e: any) {
+        setTokenStatus('invalid');
+        alert("❌ Gagal menghubungi backend.\n\nPastikan Anda telah menjalankan server backend dengan perintah:\n'npm run start-backend'\n\nDan pastikan server berjalan di Port 3001.");
+    }
   };
 
   const handleSendReminder = async () => {
@@ -62,7 +89,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         body: JSON.stringify({
           customerId: data.id,
           target: targetPhone,
-          token: telegramToken, // Pass token from UI
+          token: telegramToken, 
           message: `Halo Bapak/Ibu, kami dari BPJS Kesehatan. Mengingatkan total tunggakan Anda sebesar ${formatCurrency(data.billing_info.total_tunggakan)}. Mohon segera diselesaikan.`
         }),
       });
@@ -74,12 +101,14 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         setTimeout(() => setSendingStatus('idle'), 3000);
       } else {
         setSendingStatus('error');
-        setErrorMessage(json.error || 'Gagal mengirim pesan via Backend.');
+        // Tampilkan detail error dari Telegram jika ada (misal: Bad Request: chat not found)
+        const detailMsg = json.details ? ` (${json.details.description || JSON.stringify(json.details)})` : '';
+        setErrorMessage((json.error || 'Gagal mengirim pesan.') + detailMsg);
       }
     } catch (error: any) {
       console.error("Gagal menghubungi backend:", error);
       setSendingStatus('error');
-      setErrorMessage(error.message || 'Network Error / Backend Down');
+      setErrorMessage("Network Error: Pastikan backend berjalan di port 3001. " + (error.message || ''));
     }
   };
 
@@ -102,10 +131,10 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         if (json.success) {
             alert(`Webhook Berhasil Diset ke: ${webhookUrl}\n\nResponse Telegram: ${JSON.stringify(json.telegram_response)}`);
         } else {
-            alert(`Gagal set webhook: ${json.error}`);
+            alert(`Gagal set webhook: ${json.error}\nDetail: ${JSON.stringify(json.details)}`);
         }
     } catch (e) {
-        alert("Gagal menghubungi backend.");
+        alert("❌ Gagal menghubungi backend.\nPastikan server backend running di Port 3001.");
     }
   };
 
@@ -152,9 +181,36 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     </div>
                 </div>
 
+                {/* Bot Token Input */}
+                <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Bot Token (Dari @BotFather)</div>
+                    <div className="flex gap-1">
+                        <div className="flex-1 flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                            <Key size={14} className="text-slate-400" />
+                            <input 
+                                type="text" 
+                                value={telegramToken}
+                                onChange={(e) => setTelegramToken(e.target.value)}
+                                className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                                placeholder="123456:ABC-Def..."
+                            />
+                        </div>
+                        <button 
+                            onClick={handleVerifyToken}
+                            title="Cek Validitas Token"
+                            className={`px-2 rounded-md border text-xs font-bold transition-colors ${tokenStatus === 'valid' ? 'bg-green-100 text-green-700 border-green-300' : 'bg-slate-100 hover:bg-slate-200 border-slate-300'}`}
+                        >
+                            {tokenStatus === 'valid' ? <Check size={14}/> : '?'}
+                        </button>
+                    </div>
+                </div>
+
                 {/* Target Chat ID (Telegram) */}
                 <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Telegram Chat ID</div>
+                    <div className="flex items-center justify-between mb-1 ml-1">
+                         <div className="text-[10px] uppercase font-bold text-slate-400">Target Chat ID</div>
+                         <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-[9px] text-blue-500 hover:underline">Cek ID di @userinfobot</a>
+                    </div>
                     <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
                         <MessageSquare size={14} className="text-slate-400" />
                         <input 
@@ -162,23 +218,11 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                             value={targetPhone}
                             onChange={(e) => setTargetPhone(e.target.value)}
                             className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
-                            placeholder="12345678"
+                            placeholder="Contoh: 123456789"
                         />
                     </div>
-                </div>
-
-                {/* Bot Token Input */}
-                <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 ml-1">Bot Token (Optional)</div>
-                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
-                        <Key size={14} className="text-slate-400" />
-                        <input 
-                            type="text" 
-                            value={telegramToken}
-                            onChange={(e) => setTelegramToken(e.target.value)}
-                            className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
-                            placeholder="123456:ABC-Def..."
-                        />
+                    <div className="text-[9px] text-slate-400 mt-0.5 ml-1 italic">
+                        *User harus chat bot dulu (Start)
                     </div>
                 </div>
 

@@ -5,12 +5,13 @@ const cors = require('cors');
 const axios = require('axios');
 
 const app = express();
-const port = process.env.PORT || 3000;
+// Railway akan otomatis meng-inject process.env.PORT
+// Jika di local, fallback ke 3001
+const port = process.env.PORT || 3001;
 
 // ==========================================
 // KONFIGURASI TELEGRAM BOT API
 // ==========================================
-// Token bisa dari env atau dikirim via body request (untuk demo/setup UI)
 const ENV_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; 
 
 app.use(cors());
@@ -28,10 +29,16 @@ global.lastWebhookData = {
     status: 'Waiting...'
 };
 
+// ==========================================
+// ROOT HEALTH CHECK (Penting untuk Railway)
+// ==========================================
 app.get('/', (req, res) => {
+  console.log("Health check ping received");
   res.json({ 
-    status: 'Rich Backend Online', 
+    status: 'Rich Backend Online 🟢', 
+    platform: process.env.RAILWAY_STATIC_URL ? 'Railway' : 'Localhost',
     mode: 'Telegram Bot API',
+    port: port,
     time: new Date().toISOString() 
   });
 });
@@ -44,7 +51,32 @@ app.get('/api/debug', (req, res) => {
 });
 
 // ==========================================
-// 1. API: SETUP WEBHOOK (HELPER)
+// 1. API: VERIFY TOKEN (CHECK BOT STATUS)
+// ==========================================
+app.post('/api/verify-token', async (req, res) => {
+    const { token } = req.body;
+    const botToken = token || ENV_BOT_TOKEN;
+
+    if (!botToken) {
+        return res.status(400).json({ success: false, error: "Token not provided" });
+    }
+
+    try {
+        // Panggil getMe untuk cek validitas token
+        const response = await axios.get(`https://api.telegram.org/bot${botToken}/getMe`);
+        res.json({ success: true, bot: response.data.result });
+    } catch (error) {
+        console.error("Verify Token Error:", error.message);
+        res.status(400).json({ 
+            success: false, 
+            error: "Token Invalid atau Koneksi ke Telegram Gagal", 
+            details: error.response ? error.response.data : error.message 
+        });
+    }
+});
+
+// ==========================================
+// 2. API: SETUP WEBHOOK (HELPER)
 // ==========================================
 app.post('/api/setup-webhook', async (req, res) => {
     const { token, url } = req.body;
@@ -55,6 +87,15 @@ app.post('/api/setup-webhook', async (req, res) => {
     }
     if (!url) {
         return res.status(400).json({ success: false, error: "Webhook URL not provided" });
+    }
+
+    // Validasi URL: Telegram butuh HTTPS public URL (bukan localhost)
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+        return res.status(400).json({ 
+            success: false, 
+            error: "Invalid Webhook URL", 
+            details: "Telegram tidak bisa mengirim ke localhost. Gunakan URL Railway (https://...)" 
+        });
     }
 
     try {
@@ -71,7 +112,7 @@ app.post('/api/setup-webhook', async (req, res) => {
 });
 
 // ==========================================
-// 2. API: KIRIM PESAN (OUTGOING) - VIA TELEGRAM
+// 3. API: KIRIM PESAN (OUTGOING) - VIA TELEGRAM
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
     let { customerId, message, target, token } = req.body;
@@ -79,10 +120,9 @@ app.post('/api/send-message', async (req, res) => {
     const botToken = token || ENV_BOT_TOKEN;
 
     if (!botToken) {
-        return res.status(400).json({ success: false, error: "Telegram Bot Token missing (Check .env or UI Settings)" });
+        return res.status(400).json({ success: false, error: "Telegram Bot Token missing" });
     }
     
-    // Target di Telegram adalah Chat ID (bisa angka positif/negatif)
     if (!target) {
         return res.status(400).json({ success: false, error: "Target Chat ID missing" });
     }
@@ -95,7 +135,7 @@ app.post('/api/send-message', async (req, res) => {
         const response = await axios.post(url, {
             chat_id: target,
             text: message,
-            parse_mode: 'Markdown' // Optional: agar support bold/italic
+            parse_mode: 'Markdown' 
         });
 
         res.json({ success: true, detail: response.data });
@@ -106,14 +146,14 @@ app.post('/api/send-message', async (req, res) => {
         
         res.status(500).json({ 
             success: false, 
-            error: "Gagal kirim ke Telegram.",
+            error: "Gagal kirim ke Telegram (Cek Chat ID / Token).",
             details: telError 
         });
     }
 });
 
 // ==========================================
-// 3. API: POLLING PESAN (INCOMING QUEUE)
+// 4. API: POLLING PESAN (INCOMING QUEUE)
 // ==========================================
 app.get('/api/poll-incoming', (req, res) => {
     if (global.incomingMessageQueue.length > 0) {
@@ -126,13 +166,11 @@ app.get('/api/poll-incoming', (req, res) => {
 });
 
 // ==========================================
-// 4. WEBHOOK EVENT (POST) - MENERIMA PESAN TELEGRAM
+// 5. WEBHOOK EVENT (POST) - MENERIMA PESAN TELEGRAM
 // ==========================================
 app.post('/webhook', (req, res) => {
   const body = req.body;
 
-  // Cek struktur Update Object dari Telegram
-  // Docs: https://core.telegram.org/bots/api#update
   if (body.message && body.message.text) {
       const chatId = body.message.chat.id; // Sender ID
       const messageBody = body.message.text; // Isi pesan
@@ -143,7 +181,7 @@ app.post('/webhook', (req, res) => {
       
       global.lastWebhookData = {
           receivedAt: new Date().toLocaleString('id-ID'),
-          sender: chatId.toString(), // Convert to string for consistency
+          sender: chatId.toString(),
           message: messageBody,
           rawBody: body
       };
@@ -157,9 +195,8 @@ app.post('/webhook', (req, res) => {
       
       res.sendStatus(200);
   } else {
-      // Event lain (edit message, channel post, dll) - abaikan atau log
       console.log("Non-text message received from Telegram");
-      res.sendStatus(200); // Tetap return 200 agar Telegram tidak retry terus menerus
+      res.sendStatus(200); 
   }
 });
 

@@ -210,36 +210,34 @@ const App: React.FC = () => {
         phoneIdRef.current
       );
       
-      // Update UI dengan balasan AI dari backend
-      const aiMsg: Message = { role: 'assistant', content: responseText };
-       setCustomerStates(prevStates => {
-        const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
-        if (customerIndex === -1) return prevStates;
-        
-        // Find the customer's messages (should already contain the userMsg)
-        const currentMessages = prevStates[customerIndex].messages;
-        
-        // Only add AI message if it's not already there (prevents accidental duplicates if called multiple times)
-        const lastMessage = currentMessages[currentMessages.length - 1];
-        if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content === aiMsg.content) {
-            // AI message already exists, do nothing
-            return prevStates;
-        }
-
-        const updatedCustomer = { 
-            ...prevStates[customerIndex], 
-            messages: [...currentMessages, aiMsg] 
-        };
-        const newStates = [...prevStates];
-        newStates[customerIndex] = updatedCustomer;
-        return newStates;
-      });
-
-      // Jika mode live sync, segera fetch data customer aktif untuk sinkronisasi penuh
+      // Setelah backend merespon:
       if (isLiveSync) {
+        // Jika Live Sync aktif, kita andalkan fetchAndUpdateActiveCustomer untuk sinkronisasi penuh
         // Beri sedikit waktu untuk backend menyimpan dan memastikan data tersedia
         await new Promise(resolve => setTimeout(resolve, 500)); 
         await fetchAndUpdateActiveCustomer();
+      } else {
+        // Jika Live Sync TIDAK aktif, lakukan update lokal dengan balasan AI
+        const aiMsg: Message = { role: 'assistant', content: responseText };
+        setCustomerStates(prevStates => {
+          const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
+          if (customerIndex === -1) return prevStates;
+          
+          const currentMessages = prevStates[customerIndex].messages;
+          // Hanya tambahkan pesan AI jika belum ada (mencegah duplikat yang tidak disengaja)
+          const lastMessage = currentMessages[currentMessages.length - 1];
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content === aiMsg.content) {
+              return prevStates; // AI message sudah ada, tidak perlu update
+          }
+
+          const updatedCustomer = { 
+              ...prevStates[customerIndex], 
+              messages: [...currentMessages, aiMsg] 
+          };
+          const newStates = [...prevStates];
+          newStates[customerIndex] = updatedCustomer;
+          return newStates;
+        });
       }
 
     } catch (error) {
@@ -336,6 +334,7 @@ const App: React.FC = () => {
 
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
+        await new Promise(resolve => setTimeout(resolve, 500)); 
         await fetchAndUpdateActiveCustomer();
         await checkWebhookStatus(); // Update debug status
       }

@@ -216,7 +216,7 @@ const CUSTOMER_2 = {
         "actual_payment_date": null,
         "status": "broken_promise",
         "days_overdue": 1
-      },\
+      },
       {
         "promised_date": "2025-02-10",
         "promised_amount": 35000,
@@ -224,13 +224,13 @@ const CUSTOMER_2 = {
         "status": "delayed",
         "days_overdue": 1
       }
-    ],\
+    ],
     "last_promise": {
       "promised_date": "2025-05-10",
       "status": "broken_promise",
       "days_overdue": 1
     }
-  },\
+  },
   "claim_history": {
     "total_claims_lifetime": 1,
     "total_amount_claimed": 2500000,
@@ -250,7 +250,7 @@ const CUSTOMER_2 = {
       "total_amount": 450000,
       "most_frequent_type": "Rawat Jalan"
     }
-  },\
+  },
   "behavioral_segment": {
     "persona": "Forgetful Payer",
     "pain_points": ["Sering lupa tanggal jatuh tempo"],
@@ -258,7 +258,7 @@ const CUSTOMER_2 = {
     "objection_patterns": ["Nanti saya cek"],
     "communication_style": "Responsif",
     "payment_behavior": "Sering telat 1–4 hari"
-  },\
+  },
   "strategy": {
     "approach": "Soft Reminder",
     "urgency": "Medium",
@@ -271,7 +271,7 @@ const CUSTOMER_2 = {
         "timing": "09:00-11:00",
         "priority": 1,
         "script_template": "soft_reminder_1month"
-      },\
+      },
       {
         "action": "Offer Autodebet Registration",
         "timing": "Post-payment",
@@ -279,24 +279,24 @@ const CUSTOMER_2 = {
         "script_template": "autodebet_pitch"
       }
     ]
-  },\
+  },
   "conversation_context": {
     "is_first_contact": false,
     "has_previous_conversation": true,
     "last_conversation_summary": "Peserta lupa bayar dan janji bayar 11 Mei",
     "current_conversation_goal": "Follow-up",
     "sentiment_last_interaction": "Positive"
-  },\
+  },
   "messages": [
     {
       "role": "system",
       "content": "Anda adalah PANDAWA. Peserta ini termasuk persona Forgetful Payer, sering lupa bayar namun responsif. Ia punya riwayat 1 broken promise (credibility score 0.5) dan pernah janji bayar tanggal 11 Mei namun belum lunas. Gunakan pendekatan soft reminder, friendly, dan fokus ke penyelesaian hari ini. Dorong autodebit setelah pembayaran."
-    },\
+    },
     {
       "role": "assistant",
-      "content": "Selamat pagi Bapak A*****👋 (Akhiran kartu **0001**)\\n\\nMenyambung pesan dari Petugas kami *Ibu Dewi* tanggal **10 Mei** kemarin, Bapak menyampaikan akan melakukan pembayaran tanggal **11 Mei**. Hari ini kami ingatkan kembali iuran JKN yang tertunggak **3 bulan (Jan–Mar 2025)** dengan total **Rp105.000**.\\n\\nMenghindari lupa seperti sebelumnya, bagaimana kalau kita selesaikan sekarang saja Pak? 😊"\
+      "content": "Selamat pagi Bapak A*****👋 (Akhiran kartu **0001**)\n\nMenyambung pesan dari Petugas kami *Ibu Dewi* tanggal **10 Mei** kemarin, Bapak menyampaikan akan melakukan pembayaran tanggal **11 Mei**. Hari ini kami ingatkan kembali iuran JKN yang tertunggak **3 bulan (Jan–Mar 2025)** dengan total **Rp105.000**.\n\nMenghindari lupa seperti sebelumnya, bagaimana kalau kita selesaikan sekarang saja Pak? 😊"
     }
-  ]\
+  ]
 };
 
 // ==========================================
@@ -316,7 +316,7 @@ const CUSTOMER_3 = {
     "no_hp_masked": "0811****9988",
     "flag_rehab_eligible": false,
     "flag_autodebit": true
-  },\
+  },
   "billing_info": {
     "total_tunggakan": 450000,
     "bulan_menunggak": ["APRIL 2025"],
@@ -329,7 +329,7 @@ const CUSTOMER_3 = {
     "last_payment_method": "Autodebet BNI",
     "payment_frequency_6months": 6,
     "avg_delay_days": 0
-  },\
+  },
   "interaction_history": {
     "last_contact": {
       "agent_name": "System Auto",
@@ -345,14 +345,14 @@ const CUSTOMER_3 = {
     "total_successful_contacts": 0,
     "first_contact_date": undefined,
     "contact_history": []
-  },\
+  },
   "payment_commitment_history": {
     "total_promises": 0,
     "fulfilled_promises": 0,
     "broken_promises": 0,
     "credibility_score": 1.0,
     "promises": []
-  },\
+  },
   "claim_history": {
     "total_claims_lifetime": 5,
     "total_amount_claimed": 25000000,
@@ -372,7 +372,7 @@ const CUSTOMER_3 = {
       "total_amount": 4500000,
       "most_frequent_type": "Rawat Jalan"
     }
-  },\
+  },
   "behavioral_segment": {
     "persona": "Reliable Payer",
     "pain_points": ["Lupa top up saldo"],
@@ -380,7 +380,7 @@ const CUSTOMER_3 = {
     "objection_patterns": [],
     "communication_style": "Formal dan Singkat",
     "payment_behavior": "Selalu tepat waktu via autodebet"
-  },\
+  },
   "strategy": {
     "approach": "Notification Only",
     "urgency": "Low",
@@ -395,24 +395,24 @@ const CUSTOMER_3 = {
         "script_template": "autodebet_failed_reminder"
       }
     ]
-  },\
+  },
   "conversation_context": {
     "is_first_contact": true,
     "has_previous_conversation": false,
     "last_conversation_summary": "N/A",
     "current_conversation_goal": "Inform Failed Autodebet",
     "sentiment_last_interaction": "Neutral"
-  },\
+  },
   "messages": [
     {
       "role": "system",
       "content": "Anda adalah PANDAWA. Peserta ini 'Reliable Payer' (selalu lunas via autodebet), namun bulan ini gagal debet. Gunakan KB AUTO_002 untuk menjelaskan penyebab (kemungkinan saldo kurang saat tanggal 5/20) dan arahkan ke KB PAY_001 (Bayar Manual) agar kartu aktif kembali segera."
-    },\
+    },
     {
       "role": "assistant",
-      "content": "Selamat pagi Bapak F******, dengan PANDAWA BPJS Kesehatan. 🙏\\n\\nKami menginformasikan bahwa pendebetan iuran autodebet BNI Bapak bulan ini **gagal terproses** untuk tagihan **Rp450.000**. Biasanya, hal ini terjadi jika saldo tidak mencukupi pada tanggal penarikan otomatis (tanggal 5 atau 20).\\n\\nApakah Bapak berkenan kami pandu untuk pembayaran manual kali ini agar status kepesertaan Bapak tetap aktif?"\
+      "content": "Selamat pagi Bapak F******, dengan PANDAWA BPJS Kesehatan. 🙏\n\nKami menginformasikan bahwa pendebetan iuran autodebet BNI Bapak bulan ini **gagal terproses** untuk tagihan **Rp450.000**. Biasanya, hal ini terjadi jika saldo tidak mencukupi pada tanggal penarikan otomatis (tanggal 5 atau 20).\n\nApakah Bapak berkenan kami pandu untuk pembayaran manual kali ini agar status kepesertaan Bapak tetap aktif?"
     }
-  ]\
+  ]
 };
 
 // ==========================================
@@ -432,7 +432,7 @@ const CUSTOMER_4 = {
     "no_hp_masked": "0857****1234",
     "flag_rehab_eligible": true,
     "flag_autodebit": false
-  },\
+  },
   "billing_info": {
     "total_tunggakan": 840000,
     "bulan_menunggak": ["DES 2024", "JAN 2025", "FEB 2025", "MAR 2025", "APR 2025", "MEI 2025"],
@@ -445,7 +445,7 @@ const CUSTOMER_4 = {
     "last_payment_method": "Alfamart",
     "payment_frequency_6months": 0,
     "avg_delay_days": 20
-  },\
+  },
   "interaction_history": {
     "last_contact": {
       "agent_name": "Siti Aminah",
@@ -460,11 +460,11 @@ const CUSTOMER_4 = {
     "total_call_attempts": 5,
     "total_successful_contacts": 2,
     "first_contact_date": "2025-02-10",
-    "contact_history": [\
+    "contact_history": [
       { "date": "2025-05-08", "channel": "Telepon", "outcome": "Janji Bayar", "agent": "Siti Aminah" },
       { "date": "2025-03-15", "channel": "WhatsApp", "outcome": "Dibaca", "agent": "System Auto" }
     ]
-  },\
+  },
   "payment_commitment_history": {
     "total_promises": 1,
     "fulfilled_promises": 0,
@@ -479,7 +479,7 @@ const CUSTOMER_4 = {
         "days_overdue": 0
       }
     ]
-  },\
+  },
   "claim_history": {
     "total_claims_lifetime": 1,
     "total_amount_claimed": 5000000,
@@ -499,7 +499,7 @@ const CUSTOMER_4 = {
       "total_amount": 0,
       "most_frequent_type": "N/A"
     }
-  },\
+  },
   "behavioral_segment": {
     "persona": "Financial Struggle",
     "pain_points": ["Cashflow tidak menentu", "Takut denda"],
@@ -507,7 +507,7 @@ const CUSTOMER_4 = {
     "objection_patterns": ["Belum ada uang", "Tunggu gajian harian"],
     "communication_style": "Butuh empati tinggi",
     "payment_behavior": "Bayar manual di gerai retail"
-  },\
+  },
   "strategy": {
     "approach": "Consultative Selling (REHAB)",
     "urgency": "High",
@@ -522,24 +522,24 @@ const CUSTOMER_4 = {
         "script_template": "rehab_program_guide"
       }
     ]
-  },\
+  },
   "conversation_context": {
     "is_first_contact": false,
     "has_previous_conversation": true,
     "last_conversation_summary": "Peserta ingin mencicil tunggakan karena kesulitan ekonomi",
     "current_conversation_goal": "Closing REHAB Registration",
     "sentiment_last_interaction": "Positive (Relieved)"
-  },\
+  },
   "messages": [
     {
       "role": "system",
       "content": "Peserta mengalami kesulitan ekonomi (PHK) dan memiliki tunggakan 6 bulan. Peserta meminta keringanan. Wajib tawarkan solusi menggunakan KB REHAB_001. Edukasi cara daftar di Mobile JKN."
-    },\
+    },
     {
       "role": "assistant",
-      "content": "Selamat siang Ibu S****. Kami memahami kondisi Ibu sekeluarga pasca musibah PHK yang dialami. Berdasarkan data, total tunggakan saat ini **Rp840.000 (6 bulan)**.\\n\\nKarena tunggakan Ibu sudah lebih dari 3 bulan, Ibu **BERHAK** mengikuti **Program REHAB (Cicilan)**. Dengan program ini, Ibu tidak perlu bayar lunas sekaligus, tapi bisa dicicil hingga 12 bulan. Apakah Ibu berminat kami pandu simulasinya?"\
+      "content": "Selamat siang Ibu S****. Kami memahami kondisi Ibu sekeluarga pasca musibah PHK yang dialami. Berdasarkan data, total tunggakan saat ini **Rp840.000 (6 bulan)**.\n\nKarena tunggakan Ibu sudah lebih dari 3 bulan, Ibu **BERHAK** mengikuti **Program REHAB (Cicilan)**. Dengan program ini, Ibu tidak perlu bayar lunas sekaligus, tapi bisa dicicil hingga 12 bulan. Apakah Ibu berminat kami pandu simulasinya?"
     }
-  ]\
+  ]
 };
 
 // ==========================================
@@ -560,7 +560,7 @@ const CUSTOMER_5 = {
     "flag_rehab_eligible": false,
     "flag_autodebit": false,
     "flag_mobile_jkn": false
-  },\
+  },
   "billing_info": {
     "total_tunggakan": 0,
     "bulan_menunggak": [],
@@ -573,7 +573,7 @@ const CUSTOMER_5 = {
     "last_payment_method": "M-Banking BCA",
     "payment_frequency_6months": 6,
     "avg_delay_days": 0
-  },\
+  },
   "interaction_history": {
     "last_contact": {
       "agent_name": "System Auto",
@@ -588,7 +588,7 @@ const CUSTOMER_5 = {
     "total_call_attempts": 0,
     "total_successful_contacts": 0,
     "first_contact_date": undefined,
-    "contact_history": [\
+    "contact_history": [
       {
         "date": "2025-04-10",
         "channel": "WhatsApp",
@@ -596,14 +596,14 @@ const CUSTOMER_5 = {
         "agent": "System Auto"
       }
     ]
-  },\
+  },
   "payment_commitment_history": {
     "total_promises": 0,
     "fulfilled_promises": 0,
     "broken_promises": 0,
     "credibility_score": 1.0,
     "promises": []
-  },\
+  },
   "claim_history": {
     "total_claims_lifetime": 1,
     "total_amount_claimed": 950000,
@@ -623,7 +623,7 @@ const CUSTOMER_5 = {
       "total_amount": 300000,
       "most_frequent_type": "Rawat Jalan"
     }
-  },\
+  },
   "behavioral_segment": {
     "persona": "Reliable Payer",
     "pain_points": [
@@ -640,7 +640,7 @@ const CUSTOMER_5 = {
     ],
     "communication_style": "Kooperatif, menghargai penjelasan ringkas",
     "payment_behavior": "Rutin bayar sebelum jatuh tempo"
-  },\
+  },
   "strategy": {
     "approach": "Engagement_Education",
     "urgency": "None",
@@ -654,34 +654,34 @@ const CUSTOMER_5 = {
         "priority": 1,
         "script_template": "engagement_active_no_mobilejkn"
       }
-    ],\
+    ],
     "escalation_rule": {
       "if_no_response_by": "2025-05-25",
       "then": "No escalation (engagement only)",
       "if_broken_promise_again": "N/A"
     }
-  },\
+  },
   "conversation_context": {
     "is_first_contact": true,
     "has_previous_conversation": false,
     "last_conversation_summary": "N/A",
     "current_conversation_goal": "Apresiasi & edukasi Mobile JKN",
     "sentiment_last_interaction": "N/A"
-  },\
+  },
   "messages": [
     {
       "role": "system",
-      "content": "Anda adalah RICH, asisten virtual JKN dari BPJS Kesehatan.\\n\\nKonteks: Peserta ini **aktif membayar**, tidak punya tunggakan, dan belum menggunakan Mobile JKN. Tugas Anda adalah melakukan ENGAGEMENT, bukan penagihan.\\n\\nInstruksi:\\n1. Sampaikan apresiasi atas kedisiplinan membayar iuran.\\n2. Jelaskan bahwa ada cara lebih mudah untuk memantau iuran & kepesertaan melalui aplikasi Mobile JKN.\\n3. Tanyakan dengan sopan apakah peserta sudah pernah menggunakan Mobile JKN.\\n4. Jika belum: bantu edukasi manfaat utama dan langkah awal instalasi.\\n5. Gunakan bahasa yang ramah, tidak menggurui, dan tidak menakut-nakuti."
-    },\
+      "content": "Anda adalah RICH, asisten virtual JKN dari BPJS Kesehatan.\n\nKonteks: Peserta ini **aktif membayar**, tidak punya tunggakan, dan belum menggunakan Mobile JKN. Tugas Anda adalah melakukan ENGAGEMENT, bukan penagihan.\n\nInstruksi:\n1. Sampaikan apresiasi atas kedisiplinan membayar iuran.\n2. Jelaskan bahwa ada cara lebih mudah untuk memantau iuran & kepesertaan melalui aplikasi Mobile JKN.\n3. Tanyakan dengan sopan apakah peserta sudah pernah menggunakan Mobile JKN.\n4. Jika belum: bantu edukasi manfaat utama dan langkah awal instalasi.\n5. Gunakan bahasa yang ramah, tidak menggurui, dan tidak menakut-nakuti."
+    },
     {
       "role": "assistant",
-      "content": "Selamat siang, Bapak A**** (kartu JKN akhiran **0111**) 🌿\\n\\nKami dari BPJS Kesehatan ingin menyampaikan **terima kasih** karena Bapak selalu rutin menjaga iuran JKN tetap aktif. Kebiasaan baik seperti ini sangat membantu melindungi Bapak dan keluarga dari risiko pembiayaan layanan kesehatan yang besar. 🙏"\
-    },\
+      "content": "Selamat siang, Bapak A**** (kartu JKN akhiran **0111**) 🌿\n\nKami dari BPJS Kesehatan ingin menyampaikan **terima kasih** karena Bapak selalu rutin menjaga iuran JKN tetap aktif. Kebiasaan baik seperti ini sangat membantu melindungi Bapak dan keluarga dari risiko pembiayaan layanan kesehatan yang besar. 🙏"
+    },
     {
       "role": "assistant",
-      "content": "Untuk ke depannya, Untuk menghindari risiko lupa atau terlewat tanggal, Bapak dapat mengaktifkan fitur Autodebet di Mobile JKN agar pembayaran berjalan otomatis tiap bulan. Apakah Bapak sudah pernah menggunakan aplikasi **Mobile JKN** sebelumnya?"\
+      "content": "Untuk ke depannya, Untuk menghindari risiko lupa atau terlewat tanggal, Bapak dapat mengaktifkan fitur Autodebet di Mobile JKN agar pembayaran berjalan otomatis tiap bulan. Apakah Bapak sudah pernah menggunakan aplikasi **Mobile JKN** sebelumnya?"
     }
-  ]\
+  ]
 };
 
 const CUSTOMERS = [CUSTOMER_1, CUSTOMER_2, CUSTOMER_3, CUSTOMER_4, CUSTOMER_5];

@@ -110,8 +110,10 @@ const App: React.FC = () => {
 
   // Polling untuk update data pelanggan dari backend (saat isLiveSync aktif)
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | undefined;
-    let debugIntervalId: NodeJS.Timeout | undefined;
+    // @google/genai-fix: Use 'number' instead of 'NodeJS.Timeout' for browser timer IDs.
+    let intervalId: number | undefined;
+    // @google/genai-fix: Use 'number' instead of 'NodeJS.Timeout' for browser timer IDs.
+    let debugIntervalId: number | undefined;
 
     const pollLatestCustomerData = async () => {
       try {
@@ -236,15 +238,15 @@ const App: React.FC = () => {
                       "wa_id": targetPhoneRef.current // Use current targetPhone as sender
                     }
                   ],
-                  "messages": [
-                    {
-                      "from": targetPhoneRef.current, // Message from targetPhone
-                      "id": "wamid.Simulate" + Date.now(),
-                      "timestamp": Math.floor(Date.now() / 1000).toString(),
-                      "text": { "body": "Tes pesan simulasi dari dashboard." },
-                      "type": "text"
-                    }
-                  ]
+                    "messages": [
+                      {
+                        "from": targetPhoneRef.current, // Message from targetPhone
+                        "id": "wamid.Simulate" + Date.now(),
+                        "timestamp": Math.floor(Date.now() / 1000).toString(),
+                        "text": { "body": "Tes pesan simulasi dari dashboard." },
+                        "type": "text"
+                      }
+                    ]
                 },
                 "field": "messages"
               }

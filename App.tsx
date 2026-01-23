@@ -163,13 +163,13 @@ const App: React.FC = () => {
     };
 
     if (isLiveSync) {
-      // Poll ALL customer data every 3 seconds to reflect background updates
-      // Fix: Cast setInterval return type to number to resolve type conflict with Node.js `Timeout` type.
-      intervalId = setInterval(pollLatestCustomerData, 3000) as unknown as number; 
-      // Poll webhook status more frequently for "real-time" debug updates
-      // Fix: Cast setInterval return type to number to resolve type conflict with Node.js `Timeout` type.
+      // Hanya poll ALL customer data jika tidak sedang loading (tidak ada proses kirim manual)
+      if (!isLoading) { 
+        intervalId = setInterval(pollLatestCustomerData, 3000) as unknown as number; 
+        pollLatestCustomerData(); // Run immediately
+      }
+      // checkWebhookStatus dapat selalu berjalan, hanya untuk info debug
       debugIntervalId = setInterval(checkWebhookStatus, 2000) as unknown as number; 
-      pollLatestCustomerData(); // Run immediately
       checkWebhookStatus(); // Run immediately
     }
 
@@ -177,7 +177,7 @@ const App: React.FC = () => {
       if (intervalId) clearInterval(intervalId);
       if (debugIntervalId) clearInterval(debugIntervalId);
     };
-  }, [isLiveSync, activeCustomerId, checkWebhookStatus]); // Added checkWebhookStatus to dependencies
+  }, [isLiveSync, activeCustomerId, checkWebhookStatus, isLoading]); // Menambahkan isLoading ke dependencies
 
 
   // Fungsi kirim pesan dari UI (manual), akan memanggil backend untuk proses AI
@@ -213,8 +213,7 @@ const App: React.FC = () => {
       // Setelah backend merespon:
       if (isLiveSync) {
         // Jika Live Sync aktif, kita andalkan fetchAndUpdateActiveCustomer untuk sinkronisasi penuh
-        // Beri sedikit waktu untuk backend menyimpan dan memastikan data tersedia
-        await new Promise(resolve => setTimeout(resolve, 500)); 
+        // Hapus setTimeout, karena backend sudah menyelesaikan proses dan menyimpan data
         await fetchAndUpdateActiveCustomer();
       } else {
         // Jika Live Sync TIDAK aktif, lakukan update lokal dengan balasan AI
@@ -334,7 +333,7 @@ const App: React.FC = () => {
 
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
-        await new Promise(resolve => setTimeout(resolve, 500)); 
+        // Hapus setTimeout
         await fetchAndUpdateActiveCustomer();
         await checkWebhookStatus(); // Update debug status
       }
@@ -360,8 +359,7 @@ const App: React.FC = () => {
       
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
-          // Beri sedikit waktu untuk backend menyimpan dan memastikan data tersedia
-          await new Promise(resolve => setTimeout(resolve, 500)); 
+          // Hapus setTimeout
           await fetchAndUpdateActiveCustomer();
           await checkWebhookStatus();
       } else {

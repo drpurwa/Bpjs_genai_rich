@@ -150,11 +150,18 @@ const callGeminiInternal = async (message, customerData) => {
     }
 
     const historyForGemini = customerData.messages
-      .filter(msg => msg.role !== 'system') // Filter out system messages as they are now in systemInstruction
-      .map(msg => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
-      }));
+      .filter(msg => msg.role !== 'system')
+      .map(msg => {
+        // Memastikan content adalah string non-kosong yang valid
+        const contentText = (typeof msg.content === 'string' && msg.content.trim() !== '') 
+                              ? msg.content.trim() 
+                              : 'Pesan kosong'; // Mengganti pesan kosong dengan placeholder
+
+        return {
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: contentText }]
+        };
+      });
 
     try {
         const chatSession = ai.chats.create({
@@ -527,7 +534,7 @@ app.post('/webhook', async (req, res) => {
   // Process the webhook in the background
   setImmediate(async () => {
       console.log('Processing webhook payload asynchronously...');
-      const result = await processWebhookAndReply(body); // Panggil fungsi pemrosesan & balasan
+      const result = await processWebhookAndReply(body); // Panggil fungsi pemprosesan & balasan
       if (!result.success) {
           console.log(`⚠️ [WEBHOOK PROCESSING WARNING] Reason: ${result.reason}`);
       }

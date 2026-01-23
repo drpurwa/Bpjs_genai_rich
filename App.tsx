@@ -88,7 +88,6 @@ const App: React.FC = () => {
   const activeCustomerMessages = activeCustomerData.messages;
 
   // Extracted checkWebhookStatus function
-  // @google/genai-fix: Move `checkWebhookStatus` outside `useEffect` and wrap it in `useCallback` to make it reusable.
   const checkWebhookStatus = useCallback(async () => {
     try {
         const res = await fetch(`${API_BASE_URL}/api/debug`);
@@ -105,43 +104,73 @@ const App: React.FC = () => {
     } catch (e) {
         console.error("Debug fetch failed", e);
     }
-  }, []); // No dependencies as it uses `setWebhookStatus` which is stable, and `API_BASE_URL` from module scope.
+  }, []); 
+
+  // New helper: Fetch and update only the active customer's data
+  const fetchAndUpdateActiveCustomer = useCallback(async () => {
+    const currentActiveId = activeCustomerIdRef.current; // Use ref for latest ID
+    if (!currentActiveId || currentActiveId === INITIAL_CUSTOMER_DATA.id) return; // Don't fetch if no real ID or loading
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customer/${currentActiveId}`); 
+      if (response.ok) {
+        const updatedCustomer: CustomerData = await response.json();
+        setCustomerStates(prevStates => {
+          const customerIndex = prevStates.findIndex(c => c.id === updatedCustomer.id);
+          if (customerIndex !== -1) {
+            const newStates = [...prevStates];
+            newStates[customerIndex] = updatedCustomer;
+            return newStates;
+          }
+          // If for some reason the active customer is not in current state, add it
+          return [...prevStates, updatedCustomer];
+        });
+        setBackendConnection('connected');
+      } else {
+        console.error(`Failed to fetch active customer data for ID ${currentActiveId}:`, response.statusText);
+        setBackendConnection('error');
+      }
+    } catch (e) {
+      console.error(`Error fetching active customer data for ID ${currentActiveId}:`, e);
+      setBackendConnection('error');
+    }
+  }, []); 
 
 
   // Polling untuk update data pelanggan dari backend (saat isLiveSync aktif)
   useEffect(() => {
-    // @google/genai-fix: Use 'number' instead of 'NodeJS.Timeout' for browser timer IDs.
     let intervalId: number | undefined;
-    // @google/genai-fix: Use 'number' instead of 'NodeJS.Timeout' for browser timer IDs.
     let debugIntervalId: number | undefined;
 
     const pollLatestCustomerData = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/customers`);
-        if (response.ok) {
-          const data: CustomerData[] = await response.json();
-          setCustomerStates(data);
-          // Ensure activeCustomerId is still valid, or default to the first customer
-          if (!activeCustomerIdRef.current || !data.some(c => c.id === activeCustomerIdRef.current)) {
+        if (!response.ok) {
+          throw new Error('Failed to fetch customer data from backend');
+        }
+        const data: CustomerData[] = await response.json();
+        setCustomerStates(data);
+        // Ensure activeCustomerId is still valid, or default to the first customer
+        if (!activeCustomerIdRef.current || !data.some(c => c.id === activeCustomerIdRef.current)) {
               if (data.length > 0) {
                   setActiveCustomerId(data[0].id);
               } else {
                   setActiveCustomerId(INITIAL_CUSTOMER_DATA.id);
               }
           }
-          setBackendConnection('connected');
-        } else {
-          setBackendConnection('error');
-        }
+        setBackendConnection('connected');
       } catch (e) {
+        console.error("Error polling customer data:", e);
         setBackendConnection('error');
       }
     };
 
     if (isLiveSync) {
-      // Poll customer data every 3 seconds to reflect backend updates
-      intervalId = setInterval(pollLatestCustomerData, 3000); 
-      debugIntervalId = setInterval(checkWebhookStatus, 5000); // Use the memoized function
+      // Poll ALL customer data every 3 seconds to reflect background updates
+      // Fix: Cast setInterval return type to number to resolve type conflict with Node.js `Timeout` type.
+      intervalId = setInterval(pollLatestCustomerData, 3000) as unknown as number; 
+      // Poll webhook status more frequently for "real-time" debug updates
+      // Fix: Cast setInterval return type to number to resolve type conflict with Node.js `Timeout` type.
+      debugIntervalId = setInterval(checkWebhookStatus, 2000) as unknown as number; 
       pollLatestCustomerData(); // Run immediately
       checkWebhookStatus(); // Run immediately
     }
@@ -150,7 +179,7 @@ const App: React.FC = () => {
       if (intervalId) clearInterval(intervalId);
       if (debugIntervalId) clearInterval(debugIntervalId);
     };
-  }, [isLiveSync, activeCustomerId, checkWebhookStatus]); // Re-run effect if isLiveSync, activeCustomerId, or checkWebhookStatus changes
+  }, [isLiveSync, activeCustomerId, checkWebhookStatus]); // Added checkWebhookStatus to dependencies
 
 
   // Fungsi kirim pesan dari UI (manual), akan memanggil backend untuk proses AI
@@ -219,7 +248,8 @@ const App: React.FC = () => {
   const handleSimulateWebhook = async () => {
     setSimulating(true);
     try {
-      const samplePayload = {
+      // Helper function to create a webhook payload
+      const createWebhookPayload = (messageText: string, senderId: string) => ({
         "object": "whatsapp_business_account",
         "entry": [
           {
@@ -235,15 +265,15 @@ const App: React.FC = () => {
                   "contacts": [
                     {
                       "profile": { "name": "Simulated User" },
-                      "wa_id": targetPhoneRef.current // Use current targetPhone as sender
+                      "wa_id": senderId // Use the provided senderId
                     }
                   ],
                     "messages": [
                       {
-                        "from": targetPhoneRef.current, // Message from targetPhone
-                        "id": "wamid.Simulate" + Date.now(),
+                        "from": senderId, // Message from targetPhone
+                        "id": "wamid.Simulate" + Date.now() + Math.random().toString(36).substring(2, 7), // Unique ID
                         "timestamp": Math.floor(Date.now() / 1000).toString(),
-                        "text": { "body": "Tes pesan simulasi dari dashboard." },
+                        "text": { "body": messageText },
                         "type": "text"
                       }
                     ]
@@ -253,48 +283,89 @@ const App: React.FC = () => {
             ]
           }
         ]
-      };
-
-      const response = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(samplePayload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Simulation failed:', errorData);
-        alert('Simulasi Gagal: ' + (errorData.reason || 'Unknown error'));
-      } else {
-        alert('Simulasi Sukses! Cek di chat interface.');
-        // After successful simulation, force a poll to get the latest data
-        if (isLiveSync) {
-            // In live sync mode, the polling interval will eventually update customer data.
-            // But we should immediately update webhookStatus to reflect the simulation.
-            checkWebhookStatus(); // This will update global.lastWebhookData on backend and webhookStatus state on frontend.
-        } else {
-            // If not in live sync, we need to manually fetch updated customer data
-            const updatedResponse = await fetch(`${API_BASE_URL}/api/customers`);
-            if (updatedResponse.ok) {
-                const data: CustomerData[] = await updatedResponse.json();
-                setCustomerStates(data);
+      // Determine sender for simulation: if active customer ID is available, use its phone number, otherwise use targetPhone
+      const customerToSimulateId = activeCustomerIdRef.current; 
+      let simulationSenderPhone = targetPhoneRef.current; // Default to targetPhone
+      
+      const customerForSimulation = customerStatesRef.current.find(c => c.id === customerToSimulateId);
+      if (customerForSimulation && customerForSimulation.peserta_profile?.no_hp_masked) {
+          simulationSenderPhone = customerForSimulation.peserta_profile.no_hp_masked;
+      }
 
-                // Fetch debug info to get the customerId used by the backend for the simulation
-                const debugResponse = await fetch(`${API_BASE_URL}/api/debug`);
-                if (debugResponse.ok) {
-                    const debugData = await debugResponse.json();
-                    if (debugData.customerId) {
-                        setActiveCustomerId(debugData.customerId);
-                    } else {
-                        console.warn("Backend debug info did not provide customerId after simulation.");
-                    }
-                    // Always update webhookStatus even if not in live sync mode for consistency
-                    checkWebhookStatus(); // Use the memoized function
-                } else {
-                    console.warn("Failed to fetch debug info from backend after simulation.");
-                }
-            }
-        }
+      if (!simulationSenderPhone) {
+        alert("Tidak dapat menentukan nomor telepon pengirim untuk simulasi. Harap pilih pelanggan atau isi Target Phone.");
+        setSimulating(false);
+        return;
+      }
+      
+      // --- First message simulation ---
+      const payload1 = createWebhookPayload("Halo, saya ingin bertanya tentang BPJS.", simulationSenderPhone);
+      console.log('Simulating first message:', payload1.entry[0].changes[0].value.messages[0].text.body);
+      const response1 = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload1),
+      });
+
+      if (!response1.ok) {
+        const errorData = await response1.json();
+        console.error('Simulasi 1 gagal:', errorData);
+        alert('Simulasi Gagal (Pesan 1): ' + (errorData.reason || 'Unknown error'));
+        return;
+      }
+
+      // If online, immediately update active customer to see AI reply
+      if (isLiveSync) {
+        await fetchAndUpdateActiveCustomer();
+        await checkWebhookStatus(); // Update debug status
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Jeda 2 detik
+      
+      // --- Second message simulation ---
+      const payload2 = createWebhookPayload("Saya mau tahu lebih banyak tentang program REHAB.", simulationSenderPhone);
+      console.log('Simulating second message:', payload2.entry[0].changes[0].value.messages[0].text.body);
+      const response2 = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload2),
+      });
+
+      if (!response2.ok) {
+        const errorData = await response2.json();
+        console.error('Simulasi 2 gagal:', errorData);
+        alert('Simulasi Gagal (Pesan 2): ' + (errorData.reason || 'Unknown error'));
+        return;
+      }
+
+      alert('Simulasi 2-arah Sukses! Periksa antarmuka chat untuk melihat pesan masuk dan balasan AI.');
+      
+      // If online, immediately update active customer to see AI reply
+      if (isLiveSync) {
+          await fetchAndUpdateActiveCustomer();
+          await checkWebhookStatus();
+      } else {
+          // If not in live sync, we need to manually fetch ALL customer data
+          const updatedResponse = await fetch(`${API_BASE_URL}/api/customers`);
+          if (updatedResponse.ok) {
+              const data: CustomerData[] = await updatedResponse.json();
+              setCustomerStates(data);
+
+              // Fetch debug info to get the customerId used by the backend for the simulation
+              const debugResponse = await fetch(`${API_BASE_URL}/api/debug`);
+              if (debugResponse.ok) {
+                  const debugData = await debugResponse.json();
+                  if (debugData.customerId) {
+                      setActiveCustomerId(debugData.customerId);
+                  } else {
+                      console.warn("Backend debug info did not provide customerId after simulation.");
+                  }
+                  checkWebhookStatus(); 
+              } else {
+                  console.warn("Failed to fetch debug info from backend after simulation.");
+              }
+          }
       }
     } catch (error) {
       console.error('Network error during simulation:', error);

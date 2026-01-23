@@ -331,6 +331,20 @@ app.get('/api/customers', (req, res) => {
 });
 
 // ==========================================
+// NEW API: GET SINGLE CUSTOMER BY ID (untuk Frontend)
+// ==========================================
+app.get('/api/customer/:id', (req, res) => {
+    const customerId = req.params.id;
+    const customer = customerStates.find(c => c.id === customerId);
+    if (customer) {
+        res.json(customer);
+    } else {
+        res.status(404).json({ success: false, message: "Customer not found" });
+    }
+});
+
+
+// ==========================================
 // 5. NEW API: CHAT WITH GEMINI (BACKEND-POWERED) - Dipakai untuk manual dari frontend
 // ==========================================
 app.post('/api/chat-with-gemini', async (req, res) => {
@@ -505,16 +519,19 @@ app.get('/webhook', (req, res) => {
 // ==========================================
 app.post('/webhook', async (req, res) => {
   const body = req.body;
-  console.log('🔔 [WEBHOOK EVENT] Payload:', JSON.stringify(body || {}, null, 2));
+  
+  // IMMEDIATELY SEND 200 OK TO META TO PREVENT RETRIES
+  res.sendStatus(200);
+  console.log('🔔 [WEBHOOK EVENT] Payload received, 200 OK sent to Meta.');
 
-  const result = await processWebhookAndReply(body); // Panggil fungsi pemrosesan & balasan
-
-  if (result.success) {
-      res.sendStatus(200);
-  } else {
-      console.log(`⚠️ [WEBHOOK IGNORED] Reason: ${result.reason}`);
-      res.sendStatus(200); 
-  }
+  // Process the webhook in the background
+  setImmediate(async () => {
+      console.log('Processing webhook payload asynchronously...');
+      const result = await processWebhookAndReply(body); // Panggil fungsi pemrosesan & balasan
+      if (!result.success) {
+          console.log(`⚠️ [WEBHOOK PROCESSING WARNING] Reason: ${result.reason}`);
+      }
+  });
 });
 
 app.listen(port, () => {

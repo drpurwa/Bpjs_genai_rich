@@ -112,23 +112,21 @@ const App: React.FC = () => {
     if (!currentActiveId || currentActiveId === INITIAL_CUSTOMER_DATA.id) return; // Don't fetch if no real ID or loading
     try {
       const response = await fetch(`${API_BASE_URL}/api/customer/${currentActiveId}`); 
-      if (response.ok) {
-        const updatedCustomer: CustomerData = await response.json();
-        setCustomerStates(prevStates => {
-          const customerIndex = prevStates.findIndex(c => c.id === updatedCustomer.id);
-          if (customerIndex !== -1) {
-            const newStates = [...prevStates];
-            newStates[customerIndex] = updatedCustomer;
-            return newStates;
-          }
-          // If for some reason the active customer is not in current state, add it
-          return [...prevStates, updatedCustomer];
-        });
-        setBackendConnection('connected');
-      } else {
-        console.error(`Failed to fetch active customer data for ID ${currentActiveId}:`, response.statusText);
-        setBackendConnection('error');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch active customer data for ID ${currentActiveId}: ${response.statusText}`);
       }
+      const updatedCustomer: CustomerData = await response.json();
+      setCustomerStates(prevStates => {
+        const customerIndex = prevStates.findIndex(c => c.id === updatedCustomer.id);
+        if (customerIndex !== -1) {
+          const newStates = [...prevStates];
+          newStates[customerIndex] = updatedCustomer;
+          return newStates;
+        }
+        // If for some reason the active customer is not in current state (e.g., new customer via simulation), add it
+        return [...prevStates, updatedCustomer];
+      });
+      setBackendConnection('connected');
     } catch (e) {
       console.error(`Error fetching active customer data for ID ${currentActiveId}:`, e);
       setBackendConnection('error');
@@ -186,43 +184,63 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string) => {
     const userMsg: Message = { role: 'user', content: text };
     
-    // Optimistic UI update
-    let currentCustomerMessages = [...activeCustomerData.messages, userMsg];
+    // Optimistic UI update: Add user message immediately
     setCustomerStates(prevStates => {
       const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
       if (customerIndex === -1) return prevStates;
-      const updatedCustomer = { ...prevStates[customerIndex], messages: currentCustomerMessages };
+      const updatedCustomer = { 
+        ...prevStates[customerIndex], 
+        messages: [...prevStates[customerIndex].messages, userMsg] 
+      };
       const newStates = [...prevStates];
       newStates[customerIndex] = updatedCustomer;
       return newStates;
     });
 
-    setIsLoading(true); // Tampilkan indikator loading
+    setIsLoading(true); // Tampilkan indikator loading (AI sedang mengetik)
 
     try {
       // Panggil backend, backend akan memproses AI, menyimpan riwayat, dan membalas WA
       const responseText = await callGeminiBackend(
         text, 
-        { ...activeCustomerData, messages: currentCustomerMessages }, // Kirim state chat terbaru
+        // Kirim state chat terbaru yang sudah termasuk pesan user yang baru
+        { ...activeCustomerData, messages: [...activeCustomerData.messages, userMsg] }, 
         targetPhoneRef.current,
         whatsappTokenRef.current,
         phoneIdRef.current
       );
       
-      // Setelah backend merespon, update state lagi dengan balasan AI dari backend
-      // Ini juga akan di-handle oleh polling, tapi kita bisa update langsung untuk responsifitas
+      // Update UI dengan balasan AI dari backend
       const aiMsg: Message = { role: 'assistant', content: responseText };
        setCustomerStates(prevStates => {
         const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
         if (customerIndex === -1) return prevStates;
+        
+        // Find the customer's messages (should already contain the userMsg)
+        const currentMessages = prevStates[customerIndex].messages;
+        
+        // Only add AI message if it's not already there (prevents accidental duplicates if called multiple times)
+        const lastMessage = currentMessages[currentMessages.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content === aiMsg.content) {
+            // AI message already exists, do nothing
+            return prevStates;
+        }
+
         const updatedCustomer = { 
             ...prevStates[customerIndex], 
-            messages: [...currentCustomerMessages, aiMsg] // Gabungkan pesan user dan AI
+            messages: [...currentMessages, aiMsg] 
         };
         const newStates = [...prevStates];
         newStates[customerIndex] = updatedCustomer;
         return newStates;
       });
+
+      // Jika mode live sync, segera fetch data customer aktif untuk sinkronisasi penuh
+      if (isLiveSync) {
+        // Beri sedikit waktu untuk backend menyimpan dan memastikan data tersedia
+        await new Promise(resolve => setTimeout(resolve, 500)); 
+        await fetchAndUpdateActiveCustomer();
+      }
 
     } catch (error) {
       console.error("Gemini Error (manual send from frontend):", error);
@@ -233,7 +251,7 @@ const App: React.FC = () => {
         if (customerIndex === -1) return prevStates;
         const updatedCustomer = { 
             ...prevStates[customerIndex], 
-            messages: [...currentCustomerMessages, fallbackMsg] 
+            messages: [...prevStates[customerIndex].messages, fallbackMsg] 
         };
         const newStates = [...prevStates];
         newStates[customerIndex] = updatedCustomer;
@@ -343,6 +361,8 @@ const App: React.FC = () => {
       
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
+          // Beri sedikit waktu untuk backend menyimpan dan memastikan data tersedia
+          await new Promise(resolve => setTimeout(resolve, 500)); 
           await fetchAndUpdateActiveCustomer();
           await checkWebhookStatus();
       } else {

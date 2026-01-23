@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 interface ChatInterfaceProps {
   messages: Message[];
   onSendMessage: (text: string) => void;
-  isLoading: boolean;
+  isLoading: boolean; // Renamed from `isTyping` to `isLoading` for consistency with App.tsx
   isReadOnly?: boolean; // New prop for Live Mode
 }
 
@@ -21,6 +21,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLength = useRef(messages.length); // Track previous message count
   
   const recognitionRef = useRef<any>(null);
   const initialTextRef = useRef<string>(''); 
@@ -30,7 +31,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // Only scroll to bottom if a new message has been added
+    if (messages.length > prevMessagesLength.current) {
+      scrollToBottom();
+    }
+    prevMessagesLength.current = messages.length;
   }, [messages]);
 
   useEffect(() => {

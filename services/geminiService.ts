@@ -1,83 +1,54 @@
+import { API_BASE_URL } from '../constants';
+import { CustomerData, Message } from '../types';
 
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { CustomerData } from '../types';
-import { KNOWLEDGE_BASE_DATA } from '../constants';
-
-let chatSession: Chat | null = null;
-let aiInstance: GoogleGenAI | null = null;
-let currentCustomerId: string | null = null;
-
-export const initializeGeminiChat = (data: CustomerData) => {
-  const apiKey = process.env.API_KEY;
-  currentCustomerId = data.id;
-  
-  if (!apiKey) {
-    console.error("API Key is missing!");
-    return null;
-  }
-
-  aiInstance = new GoogleGenAI({ apiKey });
-  const customSystemMessage = data.messages.find(m => m.role === 'system')?.content || "";
-
-  let systemInstruction = `
-    Anda adalah PANDAWA (Pelayanan Administrasi Melalui Whatsapp), asisten virtual resmi BPJS Kesehatan.
-    
-    =========== STATUS & KONTEKS SAAT INI ===========
-    Status No. WA User: TERDAFTAR (di DB SIKAT)
-    
-    =========== DATA PERSONAL PESERTA ===========
-    Profil: ${JSON.stringify(data.peserta_profile)}
-    Tagihan: ${JSON.stringify(data.billing_info)}
-    Klaim Terakhir: ${JSON.stringify(data.claim_history)}
-
-    =========== KNOWLEDGE BASE ===========
-    ${JSON.stringify(KNOWLEDGE_BASE_DATA.kb_entries, null, 2)}
-
-    =========== GAYA BICARA ===========
-    Gunakan Bahasa Indonesia yang sopan, ramah, dan solutif. Jawab pertanyaan peserta berdasarkan data profil dan knowledge base yang disediakan.
-    JANGAN memberikan format JSON atau tag khusus seperti [INVOICE_DATA]. Berikan jawaban dalam bentuk teks Markdown yang rapi saja.
-  `;
-
-  if (customSystemMessage) {
-    systemInstruction += `\n\n=========== INSTRUKSI KHUSUS PESERTA INI ===========\n${customSystemMessage}`;
-  }
-
-  chatSession = aiInstance.chats.create({
-    model: 'gemini-3-flash-preview',
-    config: {
-      systemInstruction: systemInstruction,
-      temperature: 0.3,
-    },
-    history: data.messages
-      .filter(msg => msg.role !== 'system')
-      .map(msg => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content }]
-      }))
-  });
-
-  return chatSession;
-};
-
+// Fungsi fallback untuk respons jika ada masalah dengan AI atau koneksi
+// Perlu disesuaikan karena AI sekarang dipicu di backend
 const getFallbackResponse = (message: string, customerId: string | null): string => {
   const msg = message.toLowerCase();
 
-  if (customerId?.includes('000023')) {
-    if (msg.includes('males') || msg.includes('sehat')) {
+  if (customerId === 'CONV_20250510_000023') { // CUSTOMER_1 ID
+    if (msg.includes('males') || msg.includes('ndak butuh')) {
       return "Ibu, kami lihat Agustus tahun lalu Ibu sempat dirawat di RS Sardjito karena DBD (biaya Rp8,5 jt ditanggung penuh). Sayang kalau sekarang kartu nonaktif cuma karena iuran Rp70.000. Yuk dibayar hari ini agar tetap tenang. 😊";
     }
   }
+  if (customerId === 'CONV_20250511_000001') { // CUSTOMER_2 ID
+      if (msg.includes('lupa') || msg.includes('telat')) {
+          return "Bapak, agar tidak lupa lagi, bagaimana kalau kita aktifkan fitur Autodebet di Mobile JKN? Iuran akan terpotong otomatis tiap bulan. 😊";
+      }
+  }
+  if (customerId === 'CONV_20250511_000101') { // CUSTOMER_3 ID
+      if (msg.includes('gagal autodebet') || msg.includes('saldo')) {
+          return "Bapak, terkait autodebet yang gagal, biasanya karena saldo rekening tidak mencukupi saat tanggal penarikan. Apakah Bapak sudah sempat mengisi saldo rekeningnya?";
+      }
+  }
 
-  return "Selamat siang, PANDAWA di sini. Ada yang bisa kami bantu terkait kepesertaan JKN Anda?";
+  return "Salam Sehat, PANDAWA di sini. Mohon maaf pesan anda belum bisa saya proses?";
 };
 
-export const sendMessageToGemini = async (message: string, customerId?: string): Promise<string> => {
-  if (!chatSession) return getFallbackResponse(message, customerId || currentCustomerId);
+// Fungsi ini kini hanya untuk MENGIRIM PESAN MANUAL DARI FRONTEND ke backend,
+// dan backend yang akan memproses AI & menyimpannya.
+// Ini TIDAK lagi digunakan untuk polling pesan masuk.
+export const callGeminiBackend = async (message: string, customerData: CustomerData, targetPhone: string, whatsappToken: string, phoneId: string): Promise<string> => {
   try {
-    const result: GenerateContentResponse = await chatSession.sendMessage({ message });
-    return result.text || getFallbackResponse(message, customerId || currentCustomerId);
+    const response = await fetch(`${API_BASE_URL}/api/chat-with-gemini`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message, customerData, targetPhone, whatsappToken, phoneId }), // Kirim semua data yang diperlukan
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Backend Gemini API Error (manual send):", errorData);
+      return getFallbackResponse(message, customerData.id); // Fallback jika backend gagal
+    }
+
+    const data = await response.json();
+    return data.response || getFallbackResponse(message, customerData.id);
+
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return getFallbackResponse(message, customerId || currentCustomerId);
+    console.error("Network or Backend Error when calling Gemini (manual send):", error);
+    return getFallbackResponse(message, customerData.id); // Fallback jika error
   }
 };

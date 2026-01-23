@@ -22,7 +22,7 @@ Di Meta Dashboard -> **WhatsApp** -> **Configuration**:
 1. Klik **Edit** pada bagian Webhook.
 2. **Callback URL**:
    ```
-   https://bpjsgenairich-production.up.railway.app/webhook
+   https://bpjsgenairich-copy-production.up.railway.app/webhook
    ```
 3. **Verify Token**:
    ```

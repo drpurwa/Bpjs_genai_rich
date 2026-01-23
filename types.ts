@@ -143,6 +143,16 @@ export interface CustomerData {
   messages: Message[];
 }
 
+// Untuk Message yang di-poll dari backend
+export interface MessageQueueItem {
+  id: string;
+  content: string;
+  sender: string;
+  customerId: string; // Menambahkan customerId
+  timestamp: number;
+}
+
+
 // Knowledge Base Types
 export interface KbFaq {
   question: string;

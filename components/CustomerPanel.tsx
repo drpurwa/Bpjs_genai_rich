@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Import useEffect
 import { CustomerData } from '../types';
 import { InfoCard } from './InfoCard';
-import { API_BASE_URL, CUSTOMERS } from '../constants';
+import { API_BASE_URL } from '../constants'; 
 import { 
     User, CreditCard, History, Activity, AlertTriangle, Smartphone, 
     BrainCircuit, Send, CheckCircle, Loader2, XCircle, Phone, 
     Link2, Link2Off, ChevronDown, ChevronUp, Wifi, WifiOff, ShieldCheck, 
-    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash, HelpCircle, Code, FileJson, Trash2, AlignLeft
+    Copy, ArrowUpRight, ArrowDownLeft, Info, PlayCircle, Settings, MessageSquare, Key, Check, Hash, HelpCircle, Code, FileJson, Trash2, AlignLeft, LayoutTemplate
 } from 'lucide-react';
 
 interface CustomerPanelProps {
   data: CustomerData;
+  allCustomers: CustomerData[]; 
+  activeCustomerId: string; // Tambah prop activeCustomerId
   targetPhone: string;
   setTargetPhone: (val: string) => void;
   whatsappToken: string;
@@ -28,6 +30,8 @@ interface CustomerPanelProps {
 
 export const CustomerPanel: React.FC<CustomerPanelProps> = ({ 
     data, 
+    allCustomers, 
+    activeCustomerId, // Gunakan activeCustomerId
     targetPhone, 
     setTargetPhone,
     whatsappToken,
@@ -48,6 +52,11 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(false);
   const [tokenStatus, setTokenStatus] = useState<'idle' | 'valid' | 'invalid'>('idle');
   const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  
+  // Send Mode State
+  const [sendMode, setSendMode] = useState<'template' | 'text'>('template');
+  const [templateName, setTemplateName] = useState('hello_world'); 
+  const [messageBody, setMessageBody] = useState('Test kirim pesan Cloud API 🚀');
   
   // Manual Simulation State
   const [manualJson, setManualJson] = useState('');
@@ -89,13 +98,14 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
     }
   };
 
-  const handleSendTemplate = async () => {
+  const handleManualSend = async () => {
     setSendingStatus('sending');
     setErrorMessage('');
     
     try {
       const BACKEND_URL = `${API_BASE_URL}/api/send-message`;
       
+      const isTemplate = sendMode === 'template';
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
@@ -106,8 +116,8 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
           target: targetPhone,
           token: whatsappToken.trim(),
           phoneId: phoneId.trim(),
-          isTemplate: true, 
-          message: "jaspers_market_plain_text_v1"
+          isTemplate: isTemplate, 
+          message: isTemplate ? (templateName.trim() || "hello_world") : messageBody
         }),
       });
 
@@ -230,6 +240,14 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
 
   const lastPromise = data.payment_commitment_history.last_promise || data.payment_commitment_history.promises?.[0];
 
+  // Efek untuk otomatis membuka panel kontrol jika token atau phone ID kosong
+  useEffect(() => {
+    if (!whatsappToken.trim() || !phoneId.trim()) {
+      setIsControlPanelOpen(true);
+    }
+  }, [whatsappToken, phoneId]);
+
+
   return (
     <div className="h-full flex flex-col bg-slate-50 border-r border-slate-200">
       
@@ -258,14 +276,19 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                     <div className="relative">
                         <select 
                             className="w-full appearance-none bg-white border border-slate-300 text-slate-700 text-xs rounded-md px-3 py-2 pr-8 focus:outline-none focus:ring-1 focus:ring-bpjs-primary font-medium"
-                            value={data.id}
+                            value={activeCustomerId} // Gunakan activeCustomerId dari prop
                             onChange={(e) => onSwitchCustomer(e.target.value)}
+                            disabled={allCustomers.length === 0} 
                         >
-                            {CUSTOMERS.map(c => (
-                                <option key={c.id} value={c.id}>
-                                    {c.peserta_profile.gender === 'L' ? 'Bpk' : 'Ibu'} {c.peserta_profile.status_kepesertaan} - Rp{c.billing_info.total_tunggakan.toLocaleString('id-ID')}
-                                </option>
-                            ))}
+                            {allCustomers.length === 0 ? (
+                                <option value="">Memuat...</option>
+                            ) : (
+                                allCustomers.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.peserta_profile.gender === 'L' ? 'Bpk' : 'Ibu'} {c.peserta_profile.status_kepesertaan} - Rp{c.billing_info.total_tunggakan.toLocaleString('id-ID')}
+                                    </option>
+                                ))
+                            )}
                         </select>
                         <ChevronDown size={14} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
                     </div>
@@ -310,6 +333,57 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
                             {tokenStatus === 'valid' ? <Check size={14}/> : '?'}
                         </button>
                     </div>
+                </div>
+
+                {/* Send Message Control (Template vs Text) */}
+                <div>
+                    <div className="flex items-center justify-between mb-2 ml-1">
+                         <div className="text-[10px] uppercase font-bold text-slate-400">Mode Kirim Pesan</div>
+                         <div className="flex bg-slate-200 rounded p-0.5">
+                             <button 
+                                onClick={() => setSendMode('template')}
+                                className={`px-2 py-0.5 text-[10px] rounded ${sendMode === 'template' ? 'bg-white shadow text-bpjs-primary font-bold' : 'text-slate-500'}`}
+                             >Template</button>
+                             <button 
+                                onClick={() => setSendMode('text')}
+                                className={`px-2 py-0.5 text-[10px] rounded ${sendMode === 'text' ? 'bg-white shadow text-bpjs-primary font-bold' : 'text-slate-500'}`}
+                             >Free Text</button>
+                         </div>
+                    </div>
+                    
+                    {sendMode === 'template' ? (
+                        <>
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                                <LayoutTemplate size={14} className="text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    value={templateName}
+                                    onChange={(e) => setTemplateName(e.target.value)}
+                                    className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                                    placeholder="nama_template"
+                                />
+                            </div>
+                            <div className="text-[9px] text-slate-400 mt-0.5 ml-1 leading-tight">
+                                *Wajib nama template valid di Meta Dashboard.
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-slate-300">
+                                <MessageSquare size={14} className="text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    value={messageBody}
+                                    onChange={(e) => setMessageBody(e.target.value)}
+                                    className="w-full text-xs font-mono outline-none text-slate-700 placeholder-slate-300"
+                                    placeholder="Isi pesan teks..."
+                                />
+                            </div>
+                            <div className="text-[9px] text-slate-400 mt-0.5 ml-1 leading-tight">
+                                *Hanya bisa jika user sudah chat duluan (24h window).
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Target Phone Input */}
@@ -488,7 +562,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
         {/* Action Button */}
         <div>
             <button 
-            onClick={handleSendTemplate}
+            onClick={handleManualSend}
             disabled={sendingStatus === 'sending' || sendingStatus === 'success'}
             className={`w-full py-2.5 rounded-lg shadow-sm font-medium text-sm flex items-center justify-center gap-2 transition-all
                 ${sendingStatus === 'success' 
@@ -501,7 +575,7 @@ export const CustomerPanel: React.FC<CustomerPanelProps> = ({
             {sendingStatus === 'idle' && (
                 <>
                 <Send size={16} />
-                Kirim Template (Jaspers Market)
+                {sendMode === 'template' ? `Kirim Template (${templateName})` : 'Kirim Pesan Teks'}
                 </>
             )}
             {sendingStatus === 'sending' && (

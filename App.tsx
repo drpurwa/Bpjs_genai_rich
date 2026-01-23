@@ -1,270 +1,320 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CustomerPanel } from './components/CustomerPanel';
 import { ChatInterface } from './components/ChatInterface';
-import { CUSTOMERS, API_BASE_URL } from './constants';
+import { INITIAL_CUSTOMER_DATA, API_BASE_URL } from './constants'; 
 import { Message, CustomerData } from './types';
-import { initializeGeminiChat, sendMessageToGemini } from './services/geminiService';
-import { Smartphone, LayoutDashboard, WifiOff } from 'lucide-react';
+import { callGeminiBackend } from './services/geminiService';
+import { Smartphone, LayoutDashboard, WifiOff, Loader2 } from 'lucide-react'; 
 
 const App: React.FC = () => {
-  const [data, setData] = useState<CustomerData>(CUSTOMERS[0]);
-  const [messages, setMessages] = useState<Message[]>(CUSTOMERS[0].messages);
-  const [isLoading, setIsLoading] = useState(false);
+  const [customerStates, setCustomerStates] = useState<CustomerData[]>([]);
+  const [activeCustomerId, setActiveCustomerId] = useState<string>('');
+  const [isDataLoading, setIsDataLoading] = useState(true);
+
+  const [isLoading, setIsLoading] = useState(false); // Untuk indikator AI sedang mengetik
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
-  // Default Values updated per user request
   const [targetPhone, setTargetPhone] = useState(() => {
-    return localStorage.getItem('target_phone') || '628123810892'; 
+    return localStorage.getItem('target_phone') || '6282111164113'; // Default ke nomor CUSTOMER_1
   });
 
   const [whatsappToken, setWhatsappToken] = useState(() => {
-    return localStorage.getItem('whatsapp_token') || 'EAAeJN4fTa0QBQimXHdkM4fgeetIZCqiZABSXZB1nGc9ohnTM0txdhPECW9TyWDC9UCpmLBqiLQZCjg6l75SZANiwD9zocb6ZAgbz2xvbpX4msZARfEPHsiDiE6GMHVvwTcrLbL8hd9nGtV4T9uEYqb76eRV0vOVb5On6FTRWP04hYkl4RfWdiMH9Xvz4Ocyckq1wwjKppxmNDTiSKAsjd3w5tBZCvRYXsjIE9ZAdt';
+    return localStorage.getItem('whatsapp_token') || ''; // Kosongkan, wajib diisi
   });
 
   const [phoneId, setPhoneId] = useState(() => {
-    return localStorage.getItem('whatsapp_phone_id') || '889407650931797';
+    return localStorage.getItem('whatsapp_phone_id') || ''; // Kosongkan, wajib diisi
   });
 
-  // State Debugging
   const [webhookStatus, setWebhookStatus] = useState<{lastTime: string | null, lastSender: string | null, rawBody?: any}>({ lastTime: null, lastSender: null });
   const [backendConnection, setBackendConnection] = useState<'checking' | 'connected' | 'error'>('checking');
   const [simulating, setSimulating] = useState(false);
+  const [isLiveSync, setIsLiveSync] = useState(false); // Mode tampilan sinkronisasi aktif
 
-  useEffect(() => {
-    localStorage.setItem('target_phone', targetPhone);
-  }, [targetPhone]);
-
-  useEffect(() => {
-    localStorage.setItem('whatsapp_token', whatsappToken);
-  }, [whatsappToken]);
-
-  useEffect(() => {
-    localStorage.setItem('whatsapp_phone_id', phoneId);
-  }, [phoneId]);
-
-  const [isLiveSync, setIsLiveSync] = useState(false);
-
-  const dataRef = useRef(data);
-  const messagesRef = useRef(messages);
+  // Refs untuk mengakses state terbaru di dalam closures setInterval
+  const customerStatesRef = useRef(customerStates);
+  const activeCustomerIdRef = useRef(activeCustomerId); // Ref untuk activeCustomerId
   const targetPhoneRef = useRef(targetPhone);
   const whatsappTokenRef = useRef(whatsappToken);
   const phoneIdRef = useRef(phoneId);
   
+  // Update refs when state changes
   useEffect(() => {
-    dataRef.current = data;
-    messagesRef.current = messages;
+    customerStatesRef.current = customerStates;
+    activeCustomerIdRef.current = activeCustomerId;
     targetPhoneRef.current = targetPhone;
     whatsappTokenRef.current = whatsappToken;
     phoneIdRef.current = phoneId;
-  }, [data, messages, targetPhone, whatsappToken, phoneId]);
+  }, [customerStates, activeCustomerId, targetPhone, whatsappToken, phoneId]);
 
+
+  // Effect untuk menyimpan ke localStorage
+  useEffect(() => { localStorage.setItem('target_phone', targetPhone); }, [targetPhone]);
+  useEffect(() => { localStorage.setItem('whatsapp_token', whatsappToken); }, [whatsappToken]);
+  useEffect(() => { localStorage.setItem('whatsapp_phone_id', phoneId); }, [phoneId]);
+
+  // Initial fetch customer data from backend on mount
   useEffect(() => {
-    initializeGeminiChat(data);
-    setMessages(data.messages);
-  }, [data.id]);
-
-  // Check Backend Connection on Mount
-  useEffect(() => {
-    const checkBackend = async () => {
-        try {
-            const res = await fetch(API_BASE_URL);
-            if (res.ok) {
-                setBackendConnection('connected');
-            } else {
-                setBackendConnection('error');
-            }
-        } catch (e) {
-            setBackendConnection('error');
-        }
-    };
-    checkBackend();
-  }, []);
-
-  // =========================================================
-  // LOGIC SINKRONISASI WA (POLLING)
-  // =========================================================
-  useEffect(() => {
-    let intervalId: any;
-    let debugIntervalId: any;
-
-    const processIncomingMessages = async () => {
+    const fetchCustomerData = async () => {
+      setIsDataLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/poll-incoming`);
-        
-        // Update connection status
-        setBackendConnection('connected');
+        const response = await fetch(`${API_BASE_URL}/api/customers`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch customer data from backend');
+        }
+        const data: CustomerData[] = await response.json();
+        setCustomerStates(data);
+        if (data.length > 0) {
+          setActiveCustomerId(data[0].id); // Set pelanggan pertama sebagai aktif secara default
+        }
+        setBackendConnection('connected'); // Jika fetch data berhasil, berarti backend connected
+      } catch (error) {
+        console.error("Error fetching customer data:", error);
+        setCustomerStates([INITIAL_CUSTOMER_DATA as CustomerData]); // Fallback ke placeholder jika gagal
+        setActiveCustomerId(INITIAL_CUSTOMER_DATA.id);
+        setBackendConnection('error'); // Set koneksi backend error
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+    fetchCustomerData();
+  }, []); // Hanya berjalan sekali saat komponen di-mount
 
-        const json = await response.json();
+  // Data pelanggan aktif dan pesan aktif, diturunkan dari customerStates dan activeCustomerId
+  const activeCustomerData = useMemo(() => {
+    return customerStates.find(c => c.id === activeCustomerId) || INITIAL_CUSTOMER_DATA as CustomerData;
+  }, [customerStates, activeCustomerId]);
 
-        if (json.hasNew && json.messages && json.messages.length > 0) {
-            console.log(`📥 Received ${json.messages.length} new messages from WA`);
-            
-            for (const msg of json.messages) {
-                const userText = msg.content;
-                const sender = msg.sender;
-                
-                const userMsg: Message = { role: 'user', content: userText };
+  const activeCustomerMessages = activeCustomerData.messages;
 
-                setMessages(prev => [...prev, userMsg]);
-                setData(prev => ({
-                    ...prev,
-                    messages: [...prev.messages, userMsg]
-                }));
-                
-                messagesRef.current = [...messagesRef.current, userMsg];
-
-                // TRIGGER AI
-                setIsLoading(true);
-                try {
-                    const currentId = dataRef.current.id;
-                    const responseText = await sendMessageToGemini(userText, currentId);
-                    const aiMsg: Message = { role: 'assistant', content: responseText };
-
-                    setMessages(prev => [...prev, aiMsg]);
-                    setData(prev => ({
-                        ...prev,
-                        messages: [...prev.messages, aiMsg]
-                    }));
-
-                    const replyTarget = sender || targetPhoneRef.current;
-                    const token = whatsappTokenRef.current;
-                    const pId = phoneIdRef.current;
-
-                    await fetch(`${API_BASE_URL}/api/send-message`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({
-                            customerId: currentId,
-                            message: responseText,
-                            target: replyTarget,
-                            token: token,
-                            phoneId: pId,
-                            isTemplate: false // Reply selalu text biasa
-                        })
-                    });
-
-                } catch (err) {
-                    console.error("Error processing auto-reply:", err);
-                } finally {
-                    setIsLoading(false);
-                }
+  // Extracted checkWebhookStatus function
+  // @google/genai-fix: Move `checkWebhookStatus` outside `useEffect` and wrap it in `useCallback` to make it reusable.
+  const checkWebhookStatus = useCallback(async () => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/debug`);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.receivedAt) {
+                setWebhookStatus({
+                    lastTime: json.receivedAt,
+                    lastSender: json.sender,
+                    rawBody: json.rawBody
+                });
             }
         }
-      } catch (error) {
-         setBackendConnection('error');
+    } catch (e) {
+        console.error("Debug fetch failed", e);
+    }
+  }, []); // No dependencies as it uses `setWebhookStatus` which is stable, and `API_BASE_URL` from module scope.
+
+
+  // Polling untuk update data pelanggan dari backend (saat isLiveSync aktif)
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | undefined;
+    let debugIntervalId: NodeJS.Timeout | undefined;
+
+    const pollLatestCustomerData = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/customers`);
+        if (response.ok) {
+          const data: CustomerData[] = await response.json();
+          setCustomerStates(data);
+          // Ensure activeCustomerId is still valid, or default to the first customer
+          if (!activeCustomerIdRef.current || !data.some(c => c.id === activeCustomerIdRef.current)) {
+              if (data.length > 0) {
+                  setActiveCustomerId(data[0].id);
+              } else {
+                  setActiveCustomerId(INITIAL_CUSTOMER_DATA.id);
+              }
+          }
+          setBackendConnection('connected');
+        } else {
+          setBackendConnection('error');
+        }
+      } catch (e) {
+        setBackendConnection('error');
       }
     };
 
-    const checkWebhookStatus = async () => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/debug`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json.receivedAt) {
-                    setWebhookStatus({
-                        lastTime: json.receivedAt,
-                        lastSender: json.sender,
-                        rawBody: json.rawBody
-                    });
-                }
-            }
-        } catch (e) {
-            console.error("Debug fetch failed");
-        }
-    }
-
     if (isLiveSync) {
-      intervalId = setInterval(processIncomingMessages, 3000); 
-      debugIntervalId = setInterval(checkWebhookStatus, 5000);
-      checkWebhookStatus(); 
+      // Poll customer data every 3 seconds to reflect backend updates
+      intervalId = setInterval(pollLatestCustomerData, 3000); 
+      debugIntervalId = setInterval(checkWebhookStatus, 5000); // Use the memoized function
+      pollLatestCustomerData(); // Run immediately
+      checkWebhookStatus(); // Run immediately
     }
 
     return () => {
-        clearInterval(intervalId);
-        clearInterval(debugIntervalId);
+      if (intervalId) clearInterval(intervalId);
+      if (debugIntervalId) clearInterval(debugIntervalId);
     };
-  }, [isLiveSync]); 
+  }, [isLiveSync, activeCustomerId, checkWebhookStatus]); // Re-run effect if isLiveSync, activeCustomerId, or checkWebhookStatus changes
 
-  // New Function: Simulate Incoming Webhook (WA Format)
-  const handleSimulateWebhook = async () => {
-    setSimulating(true);
-    // Use target phone if available, else fallback to a dummy, 
-    // BUT we want to use target phone so the reply goes to the real device.
-    const simTarget = targetPhone || "628123456789"; 
 
-    try {
-        // Simulasi Format WhatsApp Cloud API
-        const waPayload = {
-            object: "whatsapp_business_account",
-            entry: [{
-                id: "123456789",
-                changes: [{
-                    value: {
-                        messaging_product: "whatsapp",
-                        metadata: {
-                            display_phone_number: "1234567890",
-                            phone_number_id: "1234567890"
-                        },
-                        contacts: [{
-                            profile: { name: "Simulated User" },
-                            wa_id: simTarget
-                        }],
-                        messages: [{
-                            from: simTarget,
-                            id: "wamid.HBgL..." + Date.now(),
-                            timestamp: Date.now() / 1000,
-                            text: { body: "Halo, ini pesan test simulasi WA!" },
-                            type: "text"
-                        }]
-                    },
-                    field: "messages"
-                }]
-            }]
-        };
-
-        const res = await fetch(`${API_BASE_URL}/webhook`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(waPayload)
-        });
-        
-        if (res.ok) {
-            alert(`Simulasi Masuk!\n\nPesan simulasi telah dikirim ke backend seolah-olah dari nomor: ${simTarget}.\n\nBackend akan membalas via AI ke nomor WA tersebut.`);
-        } else {
-            alert("Gagal kirim simulasi. Backend error.");
-        }
-    } catch (e) {
-        alert("Gagal menghubungi backend untuk simulasi.");
-    } finally {
-        setSimulating(false);
-    }
-  };
-
+  // Fungsi kirim pesan dari UI (manual), akan memanggil backend untuk proses AI
   const handleSendMessage = async (text: string) => {
     const userMsg: Message = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
-    setData(prev => ({ ...prev, messages: [...prev.messages, userMsg] }));
+    
+    // Optimistic UI update
+    let currentCustomerMessages = [...activeCustomerData.messages, userMsg];
+    setCustomerStates(prevStates => {
+      const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
+      if (customerIndex === -1) return prevStates;
+      const updatedCustomer = { ...prevStates[customerIndex], messages: currentCustomerMessages };
+      const newStates = [...prevStates];
+      newStates[customerIndex] = updatedCustomer;
+      return newStates;
+    });
 
-    setIsLoading(true);
+    setIsLoading(true); // Tampilkan indikator loading
+
     try {
-      const responseText = await sendMessageToGemini(text, data.id);
+      // Panggil backend, backend akan memproses AI, menyimpan riwayat, dan membalas WA
+      const responseText = await callGeminiBackend(
+        text, 
+        { ...activeCustomerData, messages: currentCustomerMessages }, // Kirim state chat terbaru
+        targetPhoneRef.current,
+        whatsappTokenRef.current,
+        phoneIdRef.current
+      );
+      
+      // Setelah backend merespon, update state lagi dengan balasan AI dari backend
+      // Ini juga akan di-handle oleh polling, tapi kita bisa update langsung untuk responsifitas
       const aiMsg: Message = { role: 'assistant', content: responseText };
-      setMessages(prev => [...prev, aiMsg]);
-      setData(prev => ({ ...prev, messages: [...prev.messages, aiMsg] }));
+       setCustomerStates(prevStates => {
+        const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
+        if (customerIndex === -1) return prevStates;
+        const updatedCustomer = { 
+            ...prevStates[customerIndex], 
+            messages: [...currentCustomerMessages, aiMsg] // Gabungkan pesan user dan AI
+        };
+        const newStates = [...prevStates];
+        newStates[customerIndex] = updatedCustomer;
+        return newStates;
+      });
+
     } catch (error) {
-      console.error("Gemini Error", error);
+      console.error("Gemini Error (manual send from frontend):", error);
+      // Fallback response for UI if AI fails
+      const fallbackMsg: Message = { role: 'assistant', content: "Maaf, terjadi kesalahan saat memproses pesan Anda. Mohon coba lagi." };
+      setCustomerStates(prevStates => {
+        const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
+        if (customerIndex === -1) return prevStates;
+        const updatedCustomer = { 
+            ...prevStates[customerIndex], 
+            messages: [...currentCustomerMessages, fallbackMsg] 
+        };
+        const newStates = [...prevStates];
+        newStates[customerIndex] = updatedCustomer;
+        return newStates;
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSwitchCustomer = (customerId: string) => {
-    const newCustomer = CUSTOMERS.find(c => c.id === customerId);
-    if (newCustomer) {
-      setData(newCustomer);
-      setMessages(newCustomer.messages);
+  // Function to simulate an incoming WhatsApp webhook message
+  const handleSimulateWebhook = async () => {
+    setSimulating(true);
+    try {
+      const samplePayload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+          {
+            "id": "1430450225258870", // Dummy WABA ID
+            "changes": [
+              {
+                "value": {
+                  "messaging_product": "whatsapp",
+                  "metadata": {
+                    "display_phone_number": "15551841728", // Dummy display phone number
+                    "phone_number_id": phoneIdRef.current || "889407650931797" // Use current phoneId
+                  },
+                  "contacts": [
+                    {
+                      "profile": { "name": "Simulated User" },
+                      "wa_id": targetPhoneRef.current // Use current targetPhone as sender
+                    }
+                  ],
+                  "messages": [
+                    {
+                      "from": targetPhoneRef.current, // Message from targetPhone
+                      "id": "wamid.Simulate" + Date.now(),
+                      "timestamp": Math.floor(Date.now() / 1000).toString(),
+                      "text": { "body": "Tes pesan simulasi dari dashboard." },
+                      "type": "text"
+                    }
+                  ]
+                },
+                "field": "messages"
+              }
+            ]
+          }
+        ]
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(samplePayload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Simulation failed:', errorData);
+        alert('Simulasi Gagal: ' + (errorData.reason || 'Unknown error'));
+      } else {
+        alert('Simulasi Sukses! Cek di chat interface.');
+        // After successful simulation, force a poll to get the latest data
+        if (isLiveSync) {
+            // In live sync mode, the polling interval will eventually update customer data.
+            // But we should immediately update webhookStatus to reflect the simulation.
+            checkWebhookStatus(); // This will update global.lastWebhookData on backend and webhookStatus state on frontend.
+        } else {
+            // If not in live sync, we need to manually fetch updated customer data
+            const updatedResponse = await fetch(`${API_BASE_URL}/api/customers`);
+            if (updatedResponse.ok) {
+                const data: CustomerData[] = await updatedResponse.json();
+                setCustomerStates(data);
+
+                // Fetch debug info to get the customerId used by the backend for the simulation
+                const debugResponse = await fetch(`${API_BASE_URL}/api/debug`);
+                if (debugResponse.ok) {
+                    const debugData = await debugResponse.json();
+                    if (debugData.customerId) {
+                        setActiveCustomerId(debugData.customerId);
+                    } else {
+                        console.warn("Backend debug info did not provide customerId after simulation.");
+                    }
+                    // Always update webhookStatus even if not in live sync mode for consistency
+                    checkWebhookStatus(); // Use the memoized function
+                } else {
+                    console.warn("Failed to fetch debug info from backend after simulation.");
+                }
+            }
+        }
+      }
+    } catch (error) {
+      console.error('Network error during simulation:', error);
+      alert('Network Error: Gagal menghubungi backend.');
+    } finally {
+      setSimulating(false);
     }
   };
+
+  // Fungsi ganti pelanggan (dari dropdown)
+  const handleSwitchCustomer = (customerId: string) => {
+    setActiveCustomerId(customerId);
+  };
+
+  if (isDataLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-100">
+        <Loader2 size={48} className="animate-spin text-bpjs-primary" />
+        <p className="ml-4 text-xl text-slate-700">Memuat data pelanggan...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-slate-100 font-sans overflow-hidden relative">
@@ -303,7 +353,8 @@ const App: React.FC = () => {
         <>
           <div className="w-1/3 min-w-[320px] max-w-[400px] h-full border-r border-slate-200 hidden md:block z-10 pt-6">
             <CustomerPanel 
-                data={data} 
+                data={activeCustomerData} // Kirim data pelanggan aktif
+                allCustomers={customerStates} // Kirim semua data pelanggan
                 targetPhone={targetPhone}
                 setTargetPhone={setTargetPhone}
                 whatsappToken={whatsappToken}
@@ -317,11 +368,12 @@ const App: React.FC = () => {
                 simulating={simulating}
                 onSimulateWebhook={handleSimulateWebhook}
                 onSwitchCustomer={handleSwitchCustomer}
+                activeCustomerId={activeCustomerId}
             />
           </div>
           <div className="flex-1 h-full z-10 pt-6">
             <ChatInterface 
-              messages={messages} 
+              messages={activeCustomerMessages} // Kirim pesan pelanggan aktif
               onSendMessage={handleSendMessage} 
               isLoading={isLoading}
               isReadOnly={isLiveSync} 
@@ -335,7 +387,7 @@ const App: React.FC = () => {
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-2xl z-20"></div>
             <div className="flex-1 overflow-hidden">
                <ChatInterface 
-                messages={messages} 
+                messages={activeCustomerMessages} // Kirim pesan pelanggan aktif
                 onSendMessage={handleSendMessage} 
                 isLoading={isLoading}
                 isReadOnly={isLiveSync}

@@ -128,8 +128,8 @@ app.post('/api/verify-token', async (req, res) => {
     }
 
     try {
-        // Cek validitas dengan mengambil info nomor telepon
-        const url = `https://graph.facebook.com/v22.0/${phoneId}`;
+        // Cek validitas dengan mengambil info nomor telepon (API v24.0)
+        const url = `https://graph.facebook.com/v24.0/${phoneId}`;
         const response = await axios.get(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -162,8 +162,8 @@ app.post('/api/send-message', async (req, res) => {
         return res.status(400).json({ success: false, error: "Credentials missing (Token, PhoneID, or Target)" });
     }
 
-    // Graph API URL
-    const url = `https://graph.facebook.com/v22.0/${phoneId}/messages`;
+    // Graph API URL (v24.0)
+    const url = `https://graph.facebook.com/v24.0/${phoneId}/messages`;
 
     // Payload Default (Text)
     let payload = {

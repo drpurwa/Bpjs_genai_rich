@@ -14,6 +14,10 @@ const app = express();
 const port = process.env.PORT || 3001;
 const CUSTOMER_DATA_FILE = path.join(__dirname, 'customerData.json');
 
+// Define known WhatsApp Phone IDs from environment variables, *after* dotenv is loaded.
+const TEST_WA_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
+const LIVE_WA_PHONE_ID = process.env.WHATSAPP_PHONE_ID_LIVE;
+
 // ==========================================
 // LOGGER MIDDLEWARE (CRITICAL FOR DEBUGGING)
 // ==========================================
@@ -29,6 +33,36 @@ const VERIFY_TOKEN = "rich-ai-verify-token";
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// ==========================================
+// HELPER: GET WHATSAPP CREDENTIALS FOR SERVER'S DEFAULT ENVIRONMENT (based on NODE_ENV)
+// Ini untuk logging awal server dan fallback umum jika tidak ada phone ID spesifik.
+// ==========================================
+const getWhatsAppCredentialsForEnvironment = () => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const token = isProduction ? process.env.WHATSAPP_ACCESS_TOKEN_LIVE : process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneId = isProduction ? process.env.WHATSAPP_PHONE_ID_LIVE : process.env.WHATSAPP_PHONE_ID;
+    const envType = isProduction ? 'live (determined by NODE_ENV)' : 'test (determined by NODE_ENV)';
+
+    return { token, phoneId, envType };
+};
+
+// ==========================================
+// HELPER: GET WHATSAPP ACCESS TOKEN BERDASARKAN PHONE NUMBER ID SPESIFIK
+// Ini digunakan untuk webhook dan pengiriman pesan manual jika phoneId diketahui.
+// ==========================================
+const getAccessTokenForPhoneId = (targetPhoneId) => {
+    if (targetPhoneId === LIVE_WA_PHONE_ID) {
+        return { token: process.env.WHATSAPP_ACCESS_TOKEN_LIVE, envType: 'live' };
+    }
+    if (targetPhoneId === TEST_WA_PHONE_ID) {
+        return { token: process.env.WHATSAPP_ACCESS_TOKEN, envType: 'test' };
+    }
+    // Fallback jika phoneId tidak cocok dengan yang dikenal (misalnya, phoneId tidak valid dari frontend)
+    console.warn(`⚠️ Unknown WhatsApp Phone ID: ${targetPhoneId}. Falling back to default server credentials (based on NODE_ENV).`);
+    return getWhatsAppCredentialsForEnvironment(); 
+};
+
 
 // ==========================================
 // IN-MEMORY & FILE-BASED DATABASE FOR CUSTOMER DATA
@@ -72,6 +106,16 @@ global.lastWebhookData = {
     rawBody: null,
     status: 'Waiting for WhatsApp...'
 };
+
+// Log WhatsApp environment saat server start
+const { token: initialWaToken, phoneId: initialWaPhoneId, envType: initialEnvType } = getWhatsAppCredentialsForEnvironment();
+console.log(`⚙️ WhatsApp Gateway configured to operate in ${initialEnvType} as default.`);
+if (!initialWaToken || !initialWaPhoneId) {
+  console.warn(`⚠️ WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_ID for ${initialEnvType} environment is NOT set in .env!`);
+}
+if (!TEST_WA_PHONE_ID) console.warn('⚠️ WHATSAPP_PHONE_ID (for test environment) is not set in .env!');
+if (!LIVE_WA_PHONE_ID) console.warn('⚠️ WHATSAPP_PHONE_ID_LIVE (for live environment) is not set in .env!');
+
 
 // ==========================================
 // HELPER: FORMAT MARKDOWN TO WHATSAPP STYLE
@@ -205,7 +249,7 @@ const sendWhatsAppMessageInternal = async (message, target, token, phoneId, isTe
                 language: { code: "en_US" }
             }
         };
-        console.log(`[OUTGOING WA] Sending Template '${templateName}' to ${target}`);
+        console.log(`[OUTGOING WA] Sending Template '${templateName}' to ${target} via Phone ID: ${phoneId}`);
     } else {
         payload = {
             messaging_product: "whatsapp",
@@ -214,7 +258,7 @@ const sendWhatsAppMessageInternal = async (message, target, token, phoneId, isTe
             type: "text",
             text: { preview_url: false, body: message }
         };
-        console.log(`[OUTGOING WA] Sending Text to ${target}: ${message}`);
+        console.log(`[OUTGOING WA] Sending Text to ${target} via Phone ID: ${phoneId}: ${message}`);
     }
 
     try {
@@ -241,10 +285,14 @@ const sendWhatsAppMessageInternal = async (message, target, token, phoneId, isTe
 // ROOT HEALTH CHECK
 // ==========================================
 app.get('/', (req, res) => {
+  const { envType } = getWhatsAppCredentialsForEnvironment(); // Menggunakan default server NODE_ENV
   res.json({ 
     status: 'Rich Backend Online 🟢', 
     platform: process.env.RAILWAY_STATIC_URL ? 'Railway' : 'Localhost',
     mode: 'WhatsApp Cloud API',
+    whatsapp_default_env: envType, // Tambahkan info environment WA default server
+    whatsapp_test_phone_id: TEST_WA_PHONE_ID || 'Not Set',
+    whatsapp_live_phone_id: LIVE_WA_PHONE_ID || 'Not Set',
     port: port,
     tips: 'Jika webhook tidak masuk, pastikan nomor pengirim sudah ditambahkan di "Test Numbers" Meta Dashboard.',
     time: new Date().toISOString() 
@@ -296,6 +344,7 @@ app.post('/api/verify-token', async (req, res) => {
 // ==========================================
 app.post('/api/send-message', async (req, res) => {
     const { message, target, token, phoneId, isTemplate } = req.body;
+    // Token and phoneId are explicitly passed from frontend, so use them directly
     const result = await sendWhatsAppMessageInternal(message, target, token, phoneId, isTemplate);
     if (result.success) {
         res.json(result);
@@ -355,7 +404,8 @@ app.get('/api/customer/:id', (req, res) => {
 // 5. NEW API: CHAT WITH GEMINI (BACKEND-POWERED) - Dipakai untuk manual dari frontend
 // ==========================================
 app.post('/api/chat-with-gemini', async (req, res) => {
-    const { message, customerData: frontendCustomerData, targetPhone } = req.body; // targetPhone opsional untuk membalas ke WA
+    const { message, customerData: frontendCustomerData, targetPhone } = req.body; 
+    let { whatsappToken, whatsappPhoneId } = req.body; // Ambil dari body jika disediakan
 
     // Temukan atau buat customerData di backend's persistent store
     let customerIndex = customerStates.findIndex(c => c.id === frontendCustomerData.id);
@@ -386,15 +436,20 @@ app.post('/api/chat-with-gemini', async (req, res) => {
 
     // Jika ada targetPhone, kirim juga ke WhatsApp
     if (targetPhone) {
-        const waFormattedText = formatToWhatsApp(aiResponseText);
-        // Ambil token dan phoneId dari env atau dari request jika frontend menyediakan
-        const waToken = process.env.WHATSAPP_ACCESS_TOKEN || req.body.whatsappToken; 
-        const waPhoneId = process.env.WHATSAPP_PHONE_ID || req.body.whatsappPhoneId;
+        // Prioritaskan token/phoneId dari body (yang diinput frontend)
+        // Jika tidak ada dari frontend, fallback ke kredensial default server (NODE_ENV based)
+        if (!whatsappToken || !whatsappPhoneId) {
+            const { token: envToken, phoneId: envPhoneId } = getWhatsAppCredentialsForEnvironment();
+            whatsappToken = envToken;
+            whatsappPhoneId = envPhoneId;
+            console.warn(`Missing WA token/phoneId from frontend for manual chat. Falling back to server's default (${envPhoneId}).`);
+        }
 
-        if (waToken && waPhoneId) {
-             sendWhatsAppMessageInternal(waFormattedText, targetPhone, waToken, waPhoneId, false);
+        if (whatsappToken && whatsappPhoneId) {
+             const waFormattedText = formatToWhatsApp(aiResponseText);
+             sendWhatsAppMessageInternal(waFormattedText, targetPhone, whatsappToken, whatsappPhoneId, false);
         } else {
-            console.warn("Missing WhatsApp token/phoneId for auto-reply from manual chat-with-gemini.");
+            console.warn("Missing WhatsApp token/phoneId (from frontend or server env) for auto-reply from manual chat-with-gemini.");
         }
     }
 
@@ -418,8 +473,9 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
             const msgBody = msgObj.text ? msgObj.text.body : "[Non-text message]";
             const contacts = body.entry[0].changes[0].value.contacts;
             const name = contacts ? contacts[0].profile.name : "Unknown";
+            const incomingPhoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id; // Extract the incoming phone ID
 
-            console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody}`);
+            console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody} | Via Phone ID: ${incomingPhoneNumberId}`);
 
             const customerIdForMessage = SENDER_CUSTOMER_MAP[from] || DEFAULT_CUSTOMER_ID;
             console.log(`Associated with customerId: ${customerIdForMessage}`);
@@ -430,7 +486,8 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
                 sender: from,
                 message: msgBody,
                 rawBody: body,
-                customerId: customerIdForMessage
+                customerId: customerIdForMessage,
+                incomingPhoneNumberId: incomingPhoneNumberId
             };
 
             // Dapatkan customerData dari persistent store
@@ -467,15 +524,14 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
             customerStates[customerIndex] = customerDataToProcess;
             saveCustomerData(); // Simpan ke file
 
-            // Kirim balasan ke WhatsApp (gunakan token & phoneId dari env)
-            const waToken = process.env.WHATSAPP_ACCESS_TOKEN;
-            const waPhoneId = process.env.WHATSAPP_PHONE_ID;
+            // Kirim balasan ke WhatsApp (gunakan token yang sesuai dengan incomingPhoneNumberId)
+            const { token: waTokenForReply, envType: envTypeForReply } = getAccessTokenForPhoneId(incomingPhoneNumberId);
 
-            if (waToken && waPhoneId && !isSimulation) { // Jangan kirim ke WA jika simulasi
+            if (waTokenForReply && incomingPhoneNumberId && !isSimulation) { // Jangan kirim ke WA jika simulasi
                 const waFormattedText = formatToWhatsApp(aiResponseText);
-                await sendWhatsAppMessageInternal(waFormattedText, from, waToken, waPhoneId, false);
-            } else if (!waToken || !waPhoneId) {
-                console.warn("WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_ID not set in .env for auto-reply.");
+                await sendWhatsAppMessageInternal(waFormattedText, from, waTokenForReply, incomingPhoneNumberId, false);
+            } else if (!waTokenForReply || !incomingPhoneNumberId) {
+                console.warn(`WHATSAPP_ACCESS_TOKEN or PHONE_ID for ${envTypeForReply} environment not set/found for auto-reply.`);
             }
             // ------------------------------------------------------------------
             

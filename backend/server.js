@@ -719,18 +719,17 @@ const initializeCustomerData = async () => {
         }
 
         // --- Initialize Customer Data ---
-        const snapshot = await customersCollection.get();
-        if (snapshot.empty) {
-            console.log('Firestore customers collection is empty. Seeding with initial data...');
-            for (const customer of INITIAL_CUSTOMERS_SEED) {
-                await customersCollection.doc(customer.id).set(customer);
-            }
-            customerStates = INITIAL_CUSTOMERS_SEED;
-            console.log(`📝 Initial customer data (total: ${INITIAL_CUSTOMERS_SEED.length}) seeded to Firestore.`);
-        } else {
-            customerStates = snapshot.docs.map(doc => doc.data());
-            console.log(`✅ Customer data (total: ${customerStates.length}) loaded from Firestore.`);
+        console.log('Ensuring all initial customer data is present/updated in Firestore...');
+        for (const customer of INITIAL_CUSTOMERS_SEED) {
+            await customersCollection.doc(customer.id).set(customer);
         }
+        console.log(`📝 All initial customer data (total: ${INITIAL_CUSTOMERS_SEED.length}) ensured in Firestore.`);
+        
+        // After ensuring all seed data is there, load the current state from Firestore
+        const snapshot = await customersCollection.get();
+        customerStates = snapshot.docs.map(doc => doc.data());
+        console.log(`✅ Customer data (total: ${customerStates.length}) loaded from Firestore into memory.`);
+        
     } catch (e) {
         console.error(`❌ Error initializing data from Firestore:`, e.message);
         customerStates = INITIAL_CUSTOMERS_SEED; // Fallback to initial data if Firestore fails

@@ -743,7 +743,17 @@ const initializeCustomerData = async () => {
 const saveCustomerData = async (customerData) => {
     try {
         await customersCollection.doc(customerData.id).set(customerData);
-        // console.log(`💾 Customer data for ${customerData.id} saved to Firestore.`); // Terlalu banyak log jika setiap chat
+        // console.log(`💾 Customer data for ${customerData.id} saved to Firestore.`); 
+        
+        // --- IMPORTANT: Update in-memory customerStates array ---
+        const index = customerStates.findIndex(c => c.id === customerData.id);
+        if (index !== -1) {
+            customerStates[index] = customerData; // Update existing customer
+        } else {
+            customerStates.push(customerData); // Add new customer if not found
+        }
+        // console.log(`✅ In-memory customerStates updated for ${customerData.id}.`);
+
     } catch (e) {
         console.error(`❌ Error saving customer data for ${customerData.id} to Firestore:`, e.message);
     }
@@ -1307,6 +1317,7 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
             let foundMessageIndex = -1;
 
             // Iterate through the in-memory cache
+            // Since saveCustomerData now updates customerStates, this should be more reliable
             for (const customer of customerStates) {
                 const messageIndex = customer.messages.findIndex(
                     msg => msg.whatsapp_message_id === messageId
@@ -1324,10 +1335,10 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
                 if (!foundCustomer.messages[foundMessageIndex].timestamp_status_updated) { // To avoid overwriting original msg timestamp
                     foundCustomer.messages[foundMessageIndex].timestamp_status_updated = timestamp;
                 }
-                await saveCustomerData(foundCustomer);
+                await saveCustomerData(foundCustomer); // Save updated status to Firestore and refresh in-memory
                 console.log(`✅ Message WA_ID: ${messageId} status updated to '${status}' for customer ${foundCustomer.id}.`);
             } else {
-                console.warn(`⚠️ Could not find customer or message for WA_ID: ${messageId} to update status.`);
+                console.warn(`⚠️ Could not find customer or message for WA_ID: ${messageId} to update status. This might be due to a transient cache issue or unexpected message ID.`);
             }
 
             return { success: true, type: 'status', data: statusObj };
@@ -1346,7 +1357,7 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  const challenge = req.query['hub.hub.challenge'];
 
   if (mode && token) {
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {

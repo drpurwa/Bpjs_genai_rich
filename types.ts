@@ -77,7 +77,6 @@ export interface ClaimHistory {
   };
   total_claims_lifetime?: number;
   total_amount_claimed?: number;
-  total_iuran_paid_lifetime?: number;
   roi_ratio?: number;
   claim_summary_1year?: {
     total_claims: number;
@@ -126,6 +125,9 @@ export interface ConversationContext {
 export interface Message {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  timestamp?: number; // Add timestamp (Unix epoch in ms)
+  whatsapp_message_id?: string; // Add WhatsApp message ID for outgoing messages
+  status?: 'sent' | 'delivered' | 'read' | 'failed'; // Status for outgoing messages
 }
 
 export interface CustomerData {

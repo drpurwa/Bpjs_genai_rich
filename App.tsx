@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CustomerPanel } from './components/CustomerPanel';
 import { ChatInterface } from './components/ChatInterface';
-import { INITIAL_CUSTOMER_DATA, API_BASE_URL } from './constants'; 
+import { API_BASE_URL } from './constants'; 
 import { Message, CustomerData } from './types';
 import { callGeminiBackend } from './services/geminiService';
 import { Smartphone, LayoutDashboard, WifiOff, Loader2 } from 'lucide-react'; 
+
+// Local placeholder for initial loading state
+const INITIAL_CUSTOMER_DATA: CustomerData = {
+  "id": "LOADING",
+  "peserta_profile": { "nokapst_masked": "Memuat...", "status_kepesertaan": "Memuat...", "kelas_rawat": "-", "jumlah_tanggungan": 0, "usia": 0, "gender": "N/A" },
+  "billing_info": { "total_tunggakan": 0, "bulan_menunggak": [], "durasi_bulan": 0, "last_payment_date": "" },
+  "interaction_history": { "last_contact": { "agent_name": "", "date": "", "channel": "", "outcome": "", "alasan_tunggak": "" } },
+  "payment_commitment_history": { "credibility_score": 0, "promises": [] },
+  "claim_history": { "last_claim": { "date": "", "type": "", "diagnosis": "", "hospital": "", "claim_amount": 0 } },
+  "strategy": { "approach": "", "urgency": "", "tone": "" },
+  "messages": []
+};
 
 const App: React.FC = () => {
   const [customerStates, setCustomerStates] = useState<CustomerData[]>([]);
@@ -66,6 +78,8 @@ const App: React.FC = () => {
         setCustomerStates(data);
         if (data.length > 0) {
           setActiveCustomerId(data[0].id); // Set pelanggan pertama sebagai aktif secara default
+        } else {
+            setActiveCustomerId(INITIAL_CUSTOMER_DATA.id); // Set to placeholder if no data
         }
         setBackendConnection('connected'); // Jika fetch data berhasil, berarti backend connected
       } catch (error) {
@@ -182,7 +196,7 @@ const App: React.FC = () => {
 
   // Fungsi kirim pesan dari UI (manual), akan memanggil backend untuk proses AI
   const handleSendMessage = async (text: string) => {
-    const userMsg: Message = { role: 'user', content: text };
+    const userMsg: Message = { role: 'user', content: text, timestamp: Date.now() };
     
     // Optimistic UI update: Add user message immediately
     setCustomerStates(prevStates => {
@@ -217,7 +231,7 @@ const App: React.FC = () => {
         await fetchAndUpdateActiveCustomer();
       } else {
         // Jika Live Sync TIDAK aktif, lakukan update lokal dengan balasan AI
-        const aiMsg: Message = { role: 'assistant', content: responseText };
+        const aiMsg: Message = { role: 'assistant', content: responseText, timestamp: Date.now(), status: 'sent' };
         setCustomerStates(prevStates => {
           const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
           if (customerIndex === -1) return prevStates;
@@ -242,7 +256,7 @@ const App: React.FC = () => {
     } catch (error) {
       console.error("Gemini Error (manual send from frontend):", error);
       // Fallback response for UI if AI fails
-      const fallbackMsg: Message = { role: 'assistant', content: "Maaf, terjadi kesalahan saat memproses pesan Anda. Mohon coba lagi." };
+      const fallbackMsg: Message = { role: 'assistant', content: "Maaf, terjadi kesalahan saat memproses pesan Anda. Mohon coba lagi.", timestamp: Date.now() };
       setCustomerStates(prevStates => {
         const customerIndex = prevStates.findIndex(c => c.id === activeCustomerIdRef.current);
         if (customerIndex === -1) return prevStates;
@@ -264,7 +278,7 @@ const App: React.FC = () => {
     setSimulating(true);
     try {
       // Helper function to create a webhook payload
-      const createWebhookPayload = (messageText: string, senderId: string) => ({
+      const createWebhookPayload = (messageText: string, senderId: string, phoneIdToUse: string) => ({
         "object": "whatsapp_business_account",
         "entry": [
           {
@@ -275,7 +289,7 @@ const App: React.FC = () => {
                   "messaging_product": "whatsapp",
                   "metadata": {
                     "display_phone_number": "15551841728", // Dummy display phone number
-                    "phone_number_id": phoneIdRef.current || "889407650931797" // Use current phoneId
+                    "phone_number_id": phoneIdToUse // Use current phoneId
                   },
                   "contacts": [
                     {
@@ -316,7 +330,7 @@ const App: React.FC = () => {
       }
       
       // --- First message simulation ---
-      const payload1 = createWebhookPayload("Halo, saya ingin bertanya tentang BPJS.", simulationSenderPhone);
+      const payload1 = createWebhookPayload("Halo, saya ingin bertanya tentang BPJS.", simulationSenderPhone, phoneIdRef.current);
       console.log('Simulating first message:', payload1.entry[0].changes[0].value.messages[0].text.body);
       const response1 = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
         method: 'POST',
@@ -340,7 +354,7 @@ const App: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 2000)); // Jeda 2 detik
       
       // --- Second message simulation ---
-      const payload2 = createWebhookPayload("Saya mau tahu lebih banyak tentang program REHAB.", simulationSenderPhone);
+      const payload2 = createWebhookPayload("Saya mau tahu lebih banyak tentang program REHAB.", simulationSenderPhone, phoneIdRef.current);
       console.log('Simulating second message:', payload2.entry[0].changes[0].value.messages[0].text.body);
       const response2 = await fetch(`${API_BASE_URL}/api/simulate-webhook`, {
         method: 'POST',

@@ -349,7 +349,7 @@ const CUSTOMER_3 = {
     },
     "total_call_attempts": 0,
     "total_successful_contacts": 0,
-    "first_contact_date": undefined,
+    "first_contact_date": null, // Changed from undefined to null
     "contact_history": []
   },
   "payment_commitment_history": {
@@ -587,7 +587,7 @@ const CUSTOMER_5 = {
     },
     "total_call_attempts": 0,
     "total_successful_contacts": 0,
-    "first_contact_date": undefined,
+    "first_contact_date": null, // Changed from undefined to null
     "contact_history": [
       {
         "date": "2025-04-10",

@@ -677,7 +677,7 @@ const CUSTOMER_5 = {
       "role": "assistant",
       "content": "Selamat siang, Bapak A**** (kartu JKN akhiran **0111**) 🌿\n\nKami dari BPJS Kesehatan ingin menyampaikan **terima kasih** karena Bapak selalu rutin menjaga iuran JKN tetap aktif. Kebiasaan baik seperti ini sangat membantu melindungi Bapak dan keluarga dari risiko pembiayaan layanan kesehatan yang besar. 🙏"
     },
-    {
+      {
       "role": "assistant",
       "content": "Untuk ke depannya, Untuk menghindari risiko lupa atau terlewat tanggal, Bapak dapat mengaktifkan fitur Autodebet di Mobile JKN agar pembayaran berjalan otomatis tiap bulan. Apakah Bapak sudah pernah menggunakan aplikasi **Mobile JKN** sebelumnya?"
     }
@@ -719,13 +719,18 @@ const initializeCustomerData = async () => {
         }
 
         // --- Initialize Customer Data ---
-        console.log('Ensuring all initial customer data is present/updated in Firestore...');
-        for (const customer of INITIAL_CUSTOMERS_SEED) {
-            await customersCollection.doc(customer.id).set(customer);
+        const customerSnapshot = await customersCollection.get();
+        if (customerSnapshot.empty) {
+            console.log('Firestore customers collection is empty. Seeding with initial customer data...');
+            for (const customer of INITIAL_CUSTOMERS_SEED) {
+                await customersCollection.doc(customer.id).set(customer);
+            }
+            console.log(`📝 All initial customer data (total: ${INITIAL_CUSTOMERS_SEED.length}) seeded to Firestore.`);
+        } else {
+            console.log('Firestore customers collection already contains data. Skipping initial seeding.');
         }
-        console.log(`📝 All initial customer data (total: ${INITIAL_CUSTOMERS_SEED.length}) ensured in Firestore.`);
         
-        // After ensuring all seed data is there, load the current state from Firestore
+        // After ensuring all seed data is there (or skipped), load the current state from Firestore
         const snapshot = await customersCollection.get();
         customerStates = snapshot.docs.map(doc => doc.data());
         console.log(`✅ Customer data (total: ${customerStates.length}) loaded from Firestore into memory.`);

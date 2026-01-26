@@ -6,8 +6,8 @@ import { Message, CustomerData } from './types';
 import { callGeminiBackend } from './services/geminiService';
 import { Smartphone, LayoutDashboard, WifiOff, Loader2 } from 'lucide-react'; 
 
-// Local placeholder for initial loading state
-const INITIAL_CUSTOMER_DATA: CustomerData = {
+// Local placeholder for initial loading state or error state
+const INITIAL_CUSTOMER_DATA_TEMPLATE: CustomerData = {
   "id": "LOADING",
   "peserta_profile": { "nokapst_masked": "Memuat...", "status_kepesertaan": "Memuat...", "kelas_rawat": "-", "jumlah_tanggungan": 0, "usia": 0, "gender": "N/A" },
   "billing_info": { "total_tunggakan": 0, "bulan_menunggak": [], "durasi_bulan": 0, "last_payment_date": "" },
@@ -79,13 +79,25 @@ const App: React.FC = () => {
         if (data.length > 0) {
           setActiveCustomerId(data[0].id); // Set pelanggan pertama sebagai aktif secara default
         } else {
-            setActiveCustomerId(INITIAL_CUSTOMER_DATA.id); // Set to placeholder if no data
+            setActiveCustomerId(INITIAL_CUSTOMER_DATA_TEMPLATE.id); // Set to placeholder if no data
         }
         setBackendConnection('connected'); // Jika fetch data berhasil, berarti backend connected
       } catch (error) {
         console.error("Error fetching customer data:", error);
-        setCustomerStates([INITIAL_CUSTOMER_DATA as CustomerData]); // Fallback ke placeholder jika gagal
-        setActiveCustomerId(INITIAL_CUSTOMER_DATA.id);
+        
+        const userFacingMessage = (error instanceof TypeError && error.message === 'Failed to fetch') 
+          ? `Koneksi ke backend gagal. Pastikan backend berjalan di ${API_BASE_URL} dan URL sudah benar di constants.ts.`
+          : `Gagal memuat data pelanggan: ${error instanceof Error ? error.message : String(error)}`;
+        
+        const errorCustomer: CustomerData = {
+          ...INITIAL_CUSTOMER_DATA_TEMPLATE,
+          id: "ERROR",
+          peserta_profile: { ...INITIAL_CUSTOMER_DATA_TEMPLATE.peserta_profile, nokapst_masked: "Error!", status_kepesertaan: "Offline" },
+          messages: [{ role: 'assistant', content: userFacingMessage, timestamp: Date.now() }]
+        };
+
+        setCustomerStates([errorCustomer]); // Set customerStates menjadi hanya pelanggan error
+        setActiveCustomerId("ERROR"); // Set pelanggan aktif menjadi pelanggan error
         setBackendConnection('error'); // Set koneksi backend error
       } finally {
         setIsDataLoading(false);
@@ -96,7 +108,7 @@ const App: React.FC = () => {
 
   // Data pelanggan aktif dan pesan aktif, diturunkan dari customerStates dan activeCustomerId
   const activeCustomerData = useMemo(() => {
-    return customerStates.find(c => c.id === activeCustomerId) || INITIAL_CUSTOMER_DATA as CustomerData;
+    return customerStates.find(c => c.id === activeCustomerId) || INITIAL_CUSTOMER_DATA_TEMPLATE;
   }, [customerStates, activeCustomerId]);
 
   const activeCustomerMessages = activeCustomerData.messages;
@@ -123,7 +135,7 @@ const App: React.FC = () => {
   // New helper: Fetch and update only the active customer's data
   const fetchAndUpdateActiveCustomer = useCallback(async () => {
     const currentActiveId = activeCustomerIdRef.current; // Use ref for latest ID
-    if (!currentActiveId || currentActiveId === INITIAL_CUSTOMER_DATA.id) return; // Don't fetch if no real ID or loading
+    if (!currentActiveId || currentActiveId === INITIAL_CUSTOMER_DATA_TEMPLATE.id || currentActiveId === "ERROR") return; // Don't fetch if no real ID or loading/error
     try {
       const response = await fetch(`${API_BASE_URL}/api/customer/${currentActiveId}`); 
       if (!response.ok) {
@@ -166,7 +178,7 @@ const App: React.FC = () => {
               if (data.length > 0) {
                   setActiveCustomerId(data[0].id);
               } else {
-                  setActiveCustomerId(INITIAL_CUSTOMER_DATA.id);
+                  setActiveCustomerId(INITIAL_CUSTOMER_DATA_TEMPLATE.id);
               }
           }
         setBackendConnection('connected');
@@ -227,7 +239,6 @@ const App: React.FC = () => {
       // Setelah backend merespon:
       if (isLiveSync) {
         // Jika Live Sync aktif, kita andalkan fetchAndUpdateActiveCustomer untuk sinkronisasi penuh
-        // Hapus setTimeout, karena backend sudah menyelesaikan proses dan menyimpan data
         await fetchAndUpdateActiveCustomer();
       } else {
         // Jika Live Sync TIDAK aktif, lakukan update lokal dengan balasan AI
@@ -321,6 +332,9 @@ const App: React.FC = () => {
       const customerForSimulation = customerStatesRef.current.find(c => c.id === customerToSimulateId);
       if (customerForSimulation && customerForSimulation.peserta_profile?.no_hp_masked) {
           simulationSenderPhone = customerForSimulation.peserta_profile.no_hp_masked;
+      } else if (customerToSimulateId === "ERROR" || customerToSimulateId === INITIAL_CUSTOMER_DATA_TEMPLATE.id) {
+        // Fallback to targetPhone if the active customer is the error or loading placeholder
+        simulationSenderPhone = targetPhoneRef.current;
       }
 
       if (!simulationSenderPhone) {
@@ -347,7 +361,6 @@ const App: React.FC = () => {
 
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
-        // Hapus setTimeout
         await fetchAndUpdateActiveCustomer();
         await checkWebhookStatus(); // Update debug status
       }
@@ -373,7 +386,6 @@ const App: React.FC = () => {
       
       // If online, immediately update active customer to see AI reply
       if (isLiveSync) {
-          // Hapus setTimeout
           await fetchAndUpdateActiveCustomer();
           await checkWebhookStatus();
       } else {

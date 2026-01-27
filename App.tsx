@@ -24,6 +24,8 @@ const App: React.FC = () => {
   const [isDataLoading, setIsDataLoading] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false); // Untuk indikator AI sedang mengetik
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false); // NEW: Untuk indikator refresh riwayat chat
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null); // NEW: Waktu refresh terakhir
   const [viewMode, setViewMode] = useState<'dashboard' | 'customer'>('dashboard');
   
   const [targetPhone, setTargetPhone] = useState(() => {
@@ -81,6 +83,7 @@ const App: React.FC = () => {
         } else {
             setActiveCustomerId(INITIAL_CUSTOMER_DATA_TEMPLATE.id); // Set to placeholder if no data
         }
+        setLastRefreshTime(new Date()); // NEW: Set initial refresh time
         setBackendConnection('connected'); // Jika fetch data berhasil, berarti backend connected
       } catch (error) {
         console.error("Error fetching customer data:", error);
@@ -156,8 +159,24 @@ const App: React.FC = () => {
     } catch (e) {
       console.error(`Error fetching active customer data for ID ${currentActiveId}:`, e);
       setBackendConnection('error');
+      throw e; // Re-throw error so handleRefreshChat can catch it
     }
   }, []); 
+
+  // NEW: Function to handle chat refresh
+  const handleRefreshChat = useCallback(async () => {
+      setIsFetchingHistory(true);
+      try {
+          await fetchAndUpdateActiveCustomer();
+          setLastRefreshTime(new Date());
+      } catch (error) {
+          console.error("Failed to refresh chat history:", error);
+          // Error handling for fetchAndUpdateActiveCustomer already updates backendConnection state.
+          // Additional specific user feedback can be added if needed.
+      } finally {
+          setIsFetchingHistory(false);
+      }
+  }, [fetchAndUpdateActiveCustomer]);
 
 
   // Polling untuk update data pelanggan dari backend (saat isLiveSync aktif)
@@ -181,6 +200,7 @@ const App: React.FC = () => {
                   setActiveCustomerId(INITIAL_CUSTOMER_DATA_TEMPLATE.id);
               }
           }
+        setLastRefreshTime(new Date()); // NEW: Update refresh time on poll
         setBackendConnection('connected');
       } catch (e) {
         console.error("Error polling customer data:", e);
@@ -493,6 +513,9 @@ const App: React.FC = () => {
               onSendMessage={handleSendMessage} 
               isLoading={isLoading}
               isReadOnly={isLiveSync} 
+              onRefreshChat={handleRefreshChat} // NEW
+              isFetchingHistory={isFetchingHistory} // NEW
+              lastRefreshTime={lastRefreshTime} // NEW
             />
           </div>
         </>
@@ -507,6 +530,9 @@ const App: React.FC = () => {
                 onSendMessage={handleSendMessage} 
                 isLoading={isLoading}
                 isReadOnly={isLiveSync}
+                onRefreshChat={handleRefreshChat} // NEW
+                isFetchingHistory={isFetchingHistory} // NEW
+                lastRefreshTime={lastRefreshTime} // NEW
               />
             </div>
             <div className="h-1 bg-slate-100 w-full flex justify-center pb-2">

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
-import { Send, Loader2, MoreVertical, Phone, Video, BadgeCheck, CheckCheck, Mic, Square, Lock } from 'lucide-react';
+import { Send, Loader2, MoreVertical, Phone, Video, BadgeCheck, CheckCheck, Mic, Square, Lock, RefreshCcw } from 'lucide-react'; // NEW: Import RefreshCcw
 import ReactMarkdown from 'react-markdown';
 
 interface ChatInterfaceProps {
@@ -8,6 +8,9 @@ interface ChatInterfaceProps {
   onSendMessage: (text: string) => void;
   isLoading: boolean; // Renamed from `isTyping` to `isLoading` for consistency with App.tsx
   isReadOnly?: boolean; // New prop for Live Mode
+  onRefreshChat: () => void; // NEW: Callback untuk refresh chat
+  isFetchingHistory: boolean; // NEW: Status loading refresh history
+  lastRefreshTime: Date | null; // NEW: Waktu refresh terakhir
 }
 
 declare global {
@@ -17,7 +20,15 @@ declare global {
   }
 }
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isLoading, isReadOnly = false }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  messages, 
+  onSendMessage, 
+  isLoading, 
+  isReadOnly = false,
+  onRefreshChat, // NEW
+  isFetchingHistory, // NEW
+  lastRefreshTime // NEW
+}) => {
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -100,6 +111,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMe
           </div>
         </div>
         <div className="flex items-center gap-5 opacity-90">
+           {/* NEW: Refresh Chat Button */}
+           {!isReadOnly && (
+             <button
+               onClick={onRefreshChat}
+               disabled={isLoading || isFetchingHistory}
+               className="p-1 rounded-full text-white/90 hover:bg-white/10 transition-colors disabled:opacity-50"
+               title="Refresh Chat History"
+             >
+               {isFetchingHistory ? <Loader2 size={20} className="animate-spin" /> : <RefreshCcw size={20} />}
+             </button>
+           )}
+           {lastRefreshTime && (
+             <span className="text-[11px] opacity-80 text-white/90">
+               Updated: {lastRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+             </span>
+           )}
            <Video size={22} className="cursor-pointer hover:opacity-80 transition-opacity" />
            <Phone size={20} className="cursor-pointer hover:opacity-80 transition-opacity" />
            <MoreVertical size={20} className="cursor-pointer hover:opacity-80 transition-opacity" />

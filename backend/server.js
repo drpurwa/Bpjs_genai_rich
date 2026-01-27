@@ -101,7 +101,8 @@ const INITIAL_SENDER_CUSTOMER_MAP = {
 };
 
 // Initial DEFAULT_CUSTOMER_ID (for seeding Firestore)
-const INITIAL_DEFAULT_CUSTOMER_ID = 'CONV_20250510_000023';
+// NEW: Mengambil dari environment variable atau fallback ke nilai hardcoded
+const INITIAL_DEFAULT_CUSTOMER_ID = process.env.DEFAULT_CUSTOMER_ID_ENV || 'CONV_20250510_000023';
 
 // Initial Customer Data (for seeding Firestore)
 const CUSTOMER_1 = {
@@ -705,16 +706,16 @@ const initializeCustomerData = async () => {
             console.log('Firestore app_settings/whatsapp_config document is empty. Seeding with initial config...');
             const initialConfig = {
                 senderCustomerMap: INITIAL_SENDER_CUSTOMER_MAP,
-                defaultCustomerId: INITIAL_DEFAULT_CUSTOMER_ID
+                defaultCustomerId: INITIAL_DEFAULT_CUSTOMER_ID // Use the environment variable-derived ID here
             };
             await configDocRef.set(initialConfig);
             global.SENDER_CUSTOMER_MAP = INITIAL_SENDER_CUSTOMER_MAP;
-            global.DEFAULT_CUSTOMER_ID = INITIAL_DEFAULT_CUSTOMER_ID;
+            global.DEFAULT_CUSTOMER_ID = INITIAL_DEFAULT_CUSTOMER_ID; // Use the environment variable-derived ID here
             console.log('📝 Initial app config seeded to Firestore.');
         } else {
             const configData = configSnapshot.data();
             global.SENDER_CUSTOMER_MAP = configData.senderCustomerMap || INITIAL_SENDER_CUSTOMER_MAP;
-            global.DEFAULT_CUSTOMER_ID = configData.defaultCustomerId || INITIAL_DEFAULT_CUSTOMER_ID;
+            global.DEFAULT_CUSTOMER_ID = configData.defaultCustomerId || INITIAL_DEFAULT_CUSTOMER_ID; // Use the environment variable-derived ID here as fallback if DB value is missing
             console.log('✅ App config loaded from Firestore.');
         }
 
@@ -739,7 +740,7 @@ const initializeCustomerData = async () => {
         console.error(`❌ Error initializing data from Firestore:`, e.message);
         customerStates = INITIAL_CUSTOMERS_SEED; // Fallback to initial data if Firestore fails
         global.SENDER_CUSTOMER_MAP = INITIAL_SENDER_CUSTOMER_MAP; // Fallback config
-        global.DEFAULT_CUSTOMER_ID = INITIAL_DEFAULT_CUSTOMER_ID; // Fallback config
+        global.DEFAULT_CUSTOMER_ID = INITIAL_DEFAULT_CUSTOMER_ID; // Fallback config, uses env var or hardcoded
         console.warn('Falling back to in-memory initial data.');
     }
 };
@@ -1216,9 +1217,19 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
 
             console.log(`📩 [NEW MESSAGE] From: ${from} (${name}) | Msg: ${msgBody} | Via Phone ID: ${incomingPhoneNumberId} | WA_ID: ${incomingMessageId}`);
 
-            // Use global SENDER_CUSTOMER_MAP loaded from Firestore
-            const customerIdForMessage = global.SENDER_CUSTOMER_MAP[from] || global.DEFAULT_CUSTOMER_ID;
-            console.log(`Associated with customerId: ${customerIdForMessage}`);
+            let customerIdToUse; // This will be the final customer ID for this message
+            let customerDataToProcess;
+
+            // 1. Check if the 'from' number is in the pre-defined SENDER_CUSTOMER_MAP
+            if (global.SENDER_CUSTOMER_MAP[from]) {
+                customerIdToUse = global.SENDER_CUSTOMER_MAP[from];
+                console.log(`Associated with KNOWN customerId: ${customerIdToUse}`);
+            } else {
+                // 2. If 'from' number is UNKNOWN, create a dynamic session ID
+                const baseCustomerId = global.DEFAULT_CUSTOMER_ID; // e.g., 'CONV_20250510_000023' from .env or hardcoded
+                customerIdToUse = `test_session_${from}_${incomingPhoneNumberId}_${baseCustomerId}`;
+                console.log(`Associated with NEW/DYNAMIC customerId: ${customerIdToUse}`);
+            }
 
             // Simpan data untuk Debug
             global.lastWebhookData = {
@@ -1226,28 +1237,46 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
                 sender: from,
                 message: msgBody,
                 rawBody: body,
-                customerId: customerIdForMessage,
+                customerId: customerIdToUse, // Use the determined ID
                 incomingPhoneNumberId: incomingPhoneNumberId
             };
 
-            // Dapatkan customerData dari Firestore
-            const customerDocRef = customersCollection.doc(customerIdForMessage);
+            // 3. Attempt to load customerData from Firestore using customerIdToUse
+            const customerDocRef = customersCollection.doc(customerIdToUse);
             let customerSnapshot = await customerDocRef.get();
-            let customerDataToProcess;
 
-            if (!customerSnapshot.exists) {
-                // Jika customer baru, buat entri baru berdasarkan default
-                customerDataToProcess = {
-                    ...INITIAL_DEFAULT_CUSTOMER_DATA, // Use initial default customer data structure
-                    id: customerIdForMessage,
-                    peserta_profile: {
-                        ...INITIAL_DEFAULT_CUSTOMER_DATA.peserta_profile,
-                        no_hp_masked: from
-                    },
-                    messages: [] // Mulai dengan pesan kosong
-                };
-            } else {
+            if (customerSnapshot.exists) {
+                // If the customer session already exists (either pre-defined or dynamic)
                 customerDataToProcess = customerSnapshot.data();
+                console.log(`✅ Existing customer session loaded from Firestore for ID: ${customerIdToUse}`);
+            } else {
+                // This is a truly new dynamic session for an unknown sender
+                console.log(`📝 Creating new Firestore document for dynamic customerId: ${customerIdToUse}`);
+
+                // Find the template customer data from INITIAL_CUSTOMERS_SEED
+                const templateId = global.DEFAULT_CUSTOMER_ID;
+                let customerDataTemplate = INITIAL_CUSTOMERS_SEED.find(c => c.id === templateId);
+
+                if (!customerDataTemplate) {
+                    console.warn(`⚠️ Template customer ID "${templateId}" from settings not found in INITIAL_CUSTOMERS_SEED. Using CUSTOMER_1 as fallback template.`);
+                    customerDataTemplate = CUSTOMER_1; // Fallback to CUSTOMER_1
+                }
+                
+                // Deep clone the selected template
+                customerDataToProcess = JSON.parse(JSON.stringify(customerDataTemplate));
+
+                // Update ID and clear messages for the new session
+                customerDataToProcess.id = customerIdToUse;
+                customerDataToProcess.messages = [];
+
+                // Ensure no_hp_masked reflects the actual sender
+                customerDataToProcess.peserta_profile.no_hp_masked = from;
+                // Optionally, update nokapst_masked to clearly indicate a test session
+                customerDataToProcess.peserta_profile.nokapst_masked = `TEST-${from.slice(-4)}`;
+
+                // Save this new session to Firestore.
+                await saveCustomerData(customerDataToProcess); // saveCustomerData also updates in-memory cache
+                console.log(`✅ New dynamic customer session ${customerIdToUse} created and saved to Firestore.`);
             }
 
             // Tambahkan pesan user ke riwayat chat
@@ -1282,7 +1311,7 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
                     console.log(`✅ AI Response sent to WA. Message ID: ${sentMessageId}`);
                 } else {
                     aiMsg.status = 'failed';
-                    console.error(`❌ Failed to send AI response to WA for customer ${customerIdForMessage}.`);
+                    console.error(`❌ Failed to send AI response to WA for customer ${customerIdToUse}.`);
                 }
             } else if (!waTokenForReply || !incomingPhoneNumberId) {
                 console.warn(`WHATSAPP_ACCESS_TOKEN or PHONE_ID for ${envTypeForReply} environment not set/found for auto-reply.`);

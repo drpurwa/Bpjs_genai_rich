@@ -176,7 +176,7 @@ const CUSTOMER_2 = {
     "gender": "L",
     "no_hp_masked": "0857****9901",
     "flag_rehab_eligible": false,
-    "flag_autodebit": false
+    "flag_autodebet": false
   },
   "billing_info": {
     "total_tunggakan": 105000,
@@ -322,7 +322,7 @@ const CUSTOMER_3 = {
     "gender": "L",
     "no_hp_masked": "0811****9988",
     "flag_rehab_eligible": false,
-    "flag_autodebit": true
+    "flag_autodebet": true
   },
   "billing_info": {
     "total_tunggakan": 450000,
@@ -559,7 +559,7 @@ const CUSTOMER_5 = {
     "gender": "L",
     "no_hp_masked": "0813****2211",
     "flag_rehab_eligible": false,
-    "flag_autodebit": false,
+    "flag_autodebet": false,
     "flag_mobile_jkn": false
   },
   "billing_info": {
@@ -1076,7 +1076,8 @@ app.get('/api/customers', async (req, res) => {
         const snapshot = await customersCollection.get();
         const customers = snapshot.docs.map(doc => doc.data());
         res.json(customers);
-    } catch (e) {
+    }
+    catch (e) {
         console.error("❌ Error fetching all customers from Firestore:", e.message);
         res.status(500).json({ success: false, error: "Failed to retrieve customers." });
     }
@@ -1219,18 +1220,21 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
 
             let customerIdToUse; // This will be the final customer ID for this message
             let customerDataToProcess;
+            let baseTemplateId; // The ID to use for fetching the initial persona template
 
-            // 1. Check if the 'from' number is in the pre-defined SENDER_CUSTOMER_MAP
+            // Determine the base template ID
             if (global.SENDER_CUSTOMER_MAP[from]) {
-                customerIdToUse = global.SENDER_CUSTOMER_MAP[from];
-                console.log(`Associated with KNOWN customerId: ${customerIdToUse}`);
+                baseTemplateId = global.SENDER_CUSTOMER_MAP[from];
+                console.log(`Base Template ID (mapped sender): ${baseTemplateId}`);
             } else {
-                // 2. If 'from' number is UNKNOWN, create a dynamic session ID
-                const baseCustomerId = global.DEFAULT_CUSTOMER_ID; // e.g., 'CONV_20250510_000023' from .env or hardcoded
-                customerIdToUse = `test_session_${from}_${incomingPhoneNumberId}_${baseCustomerId}`;
-                console.log(`Associated with NEW/DYNAMIC customerId: ${customerIdToUse}`);
+                baseTemplateId = global.DEFAULT_CUSTOMER_ID;
+                console.log(`Base Template ID (unmapped sender, default): ${baseTemplateId}`);
             }
-
+            
+            // Construct the dynamic customerIdToUse
+            customerIdToUse = `test_session_${from}_${incomingPhoneNumberId}_${baseTemplateId}`;
+            console.log(`Final customerId for this session: ${customerIdToUse}`);
+            
             // Simpan data untuk Debug
             global.lastWebhookData = {
                 receivedAt: new Date().toLocaleString('id-ID'),
@@ -1246,19 +1250,18 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
             let customerSnapshot = await customerDocRef.get();
 
             if (customerSnapshot.exists) {
-                // If the customer session already exists (either pre-defined or dynamic)
+                // If the customer session already exists
                 customerDataToProcess = customerSnapshot.data();
                 console.log(`✅ Existing customer session loaded from Firestore for ID: ${customerIdToUse}`);
             } else {
-                // This is a truly new dynamic session for an unknown sender
-                console.log(`📝 Creating new Firestore document for dynamic customerId: ${customerIdToUse}`);
+                // This is a truly new dynamic session
+                console.log(`📝 Creating new Firestore document for customerId: ${customerIdToUse}`);
 
-                // Find the template customer data from INITIAL_CUSTOMERS_SEED
-                const templateId = global.DEFAULT_CUSTOMER_ID;
-                let customerDataTemplate = INITIAL_CUSTOMERS_SEED.find(c => c.id === templateId);
+                // Find the template customer data from INITIAL_CUSTOMERS_SEED using baseTemplateId
+                let customerDataTemplate = INITIAL_CUSTOMERS_SEED.find(c => c.id === baseTemplateId);
 
                 if (!customerDataTemplate) {
-                    console.warn(`⚠️ Template customer ID "${templateId}" from settings not found in INITIAL_CUSTOMERS_SEED. Using CUSTOMER_1 as fallback template.`);
+                    console.warn(`⚠️ Template customer ID "${baseTemplateId}" not found in INITIAL_CUSTOMERS_SEED. Using CUSTOMER_1 as fallback template.`);
                     customerDataTemplate = CUSTOMER_1; // Fallback to CUSTOMER_1
                 }
                 
@@ -1271,8 +1274,9 @@ const processWebhookAndReply = async (body, isSimulation = false) => {
 
                 // Ensure no_hp_masked reflects the actual sender
                 customerDataToProcess.peserta_profile.no_hp_masked = from;
-                // Optionally, update nokapst_masked to clearly indicate a test session
+                // Update nokapst_masked to clearly indicate a test session
                 customerDataToProcess.peserta_profile.nokapst_masked = `TEST-${from.slice(-4)}`;
+                
 
                 // Save this new session to Firestore.
                 await saveCustomerData(customerDataToProcess); // saveCustomerData also updates in-memory cache
